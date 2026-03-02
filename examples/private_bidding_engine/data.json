@@ -1,0 +1,26 @@
+[
+  {
+    "bidder_id": "CompanyA",
+    "auction_id": "AUC-2023-X",
+    "amount": 500000,
+    "currency": "USD"
+  },
+  {
+    "bidder_id": "CompanyB",
+    "auction_id": "AUC-2023-X",
+    "amount": 520000,
+    "currency": "USD"
+  },
+  {
+    "bidder_id": "CompanyC",
+    "auction_id": "AUC-2023-X",
+    "amount": 480000,
+    "currency": "USD"
+  },
+  {
+    "bidder_id": "BidderX",
+    "auction_id": "AUC-2023-Y",
+    "amount": 100,
+    "currency": "USD"
+  }
+]

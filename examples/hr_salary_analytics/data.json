@@ -1,0 +1,7 @@
+[
+  {"emp_id": "E001", "salary": 120000, "department": "Engineering", "gender": "M", "role_level": 4},
+  {"emp_id": "E002", "salary": 115000, "department": "Engineering", "gender": "F", "role_level": 4},
+  {"emp_id": "E003", "salary": 80000, "department": "Sales", "gender": "F", "role_level": 2},
+  {"emp_id": "E004", "salary": 82000, "department": "Sales", "gender": "M", "role_level": 2},
+  {"emp_id": "E005", "salary": 250000, "department": "Exec", "gender": "M", "role_level": 9}
+]

@@ -1,0 +1,35 @@
+[
+  {
+    "metadata": {
+      "patient_id": "PT-10923",
+      "age": 72,
+      "history_of_stroke": true
+    },
+    "scan_features": [
+      {
+        "region": "frontal_lobe",
+        "density_score": 0.45,
+        "anomaly_detected": false
+      },
+      {
+        "region": "temporal_lobe",
+        "density_score": 0.85,
+        "anomaly_detected": true
+      }
+    ]
+  },
+  {
+    "metadata": {
+      "patient_id": "PT-33211",
+      "age": 45,
+      "history_of_stroke": false
+    },
+    "scan_features": [
+      {
+        "region": "occipital_lobe",
+        "density_score": 0.33,
+        "anomaly_detected": false
+      }
+    ]
+  }
+]

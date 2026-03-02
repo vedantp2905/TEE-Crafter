@@ -1,0 +1,81 @@
+# Stage 1: Build the NSM CLI helper using the official AWS Rust API
+FROM rust:alpine AS builder
+RUN apk add --no-cache musl-dev git python3
+
+WORKDIR /build
+RUN cargo new nsm-cli
+WORKDIR /build/nsm-cli
+
+# Use the official AWS Nitro Enclaves NSM API library (pinned version for stability)
+RUN echo 'aws-nitro-enclaves-nsm-api = "0.4"' >> Cargo.toml
+RUN echo 'base64 = "0.21"' >> Cargo.toml
+RUN echo 'serde_bytes = "0.11"' >> Cargo.toml
+
+# Write the Rust source code
+RUN cat << 'EOF' > src/main.rs
+use aws_nitro_enclaves_nsm_api::driver::{nsm_init, nsm_process_request, nsm_exit};
+use aws_nitro_enclaves_nsm_api::api::{Request, Response};
+use base64::{engine::general_purpose, Engine as _};
+use std::env;
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let mut nonce_bytes = vec![];
+    let mut pub_key_bytes: Option<Vec<u8>> = None;
+    
+    let mut i = 1;
+    while i < args.len() {
+        if args[i] == "--nonce" && i + 1 < args.len() {
+            nonce_bytes = general_purpose::STANDARD.decode(&args[i+1]).expect("Invalid base64 nonce");
+            i += 2;
+        } else if args[i] == "--public-key" && i + 1 < args.len() {
+            pub_key_bytes = Some(general_purpose::STANDARD.decode(&args[i+1]).expect("Invalid base64 pubkey"));
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    
+    let fd = nsm_init();
+    if fd < 0 { eprintln!("Failed to initialize NSM"); std::process::exit(1); }
+    
+    let pk_buf = pub_key_bytes.map(serde_bytes::ByteBuf::from);
+    let nonce_buf = if nonce_bytes.is_empty() { None } else { Some(serde_bytes::ByteBuf::from(nonce_bytes)) };
+    
+    let req = Request::Attestation { user_data: None, nonce: nonce_buf, public_key: pk_buf };
+    let resp = nsm_process_request(fd, req);
+    
+    if let Response::Attestation { document } = resp {
+        print!("{}", general_purpose::STANDARD.encode(document));
+    } else {
+        eprintln!("Failed to get attestation doc: {:?}", resp);
+        std::process::exit(1);
+    }
+    nsm_exit(fd);
+}
+EOF
+
+
+# Compile the static binary
+RUN cargo build --release
+
+# Stage 2: The final Python Enclave Image
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Install build dependencies required for cryptography and standard python libs
+RUN apk add --no-cache gcc musl-dev libffi-dev ca-certificates iproute2
+
+# Copy the compiled NSM binary from the builder stage into the final image
+COPY --from=builder /build/nsm-cli/target/release/nsm-cli /usr/local/bin/nsm-cli
+
+# Copy requirements if they exist, and explicitly install our attestation dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir cbor2 cryptography pydantic boto3 requests fastapi uvicorn asn1crypto && \
+    if [ -f "requirements.txt" ]; then pip install --no-cache-dir -r requirements.txt; fi
+
+# Copy all user code and generated vsock wrapper
+COPY . .
+
+CMD ["/usr/local/bin/python", "/app/app_vsock.py"]

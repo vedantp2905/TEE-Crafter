@@ -1,0 +1,14 @@
+venv/
+builds/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.terraform.lock.hcl
+.terraform/
+.env
+.cursorignore
+*.pem
+*.pdf
+!src/nitro_agent/resources/root.pem
+*.plan.md
+*.DS_Store

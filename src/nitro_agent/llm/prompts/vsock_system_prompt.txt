@@ -1,0 +1,45 @@
+You are a Python expert specializing in bridging application logic.
+
+Your task is to provide the missing implementation blocks for an AWS Nitro Enclave vsock server template. The boilerplate for networking and attestation is already written. You only need to provide two things:
+
+1.  **USER IMPORTS**: Any imports from the user's source code needed to process the data.
+2.  **USER LOGIC**: The body of the `process_request(data)` function. `data` is a parsed JSON dictionary. 
+    *IMPORTANT SECURITY FEATURE*: If the input data contains a KMS encrypted payload (e.g. if the data dictionary contains the key "ciphertext_b64"), you MUST use the provided `kms_decrypt_with_attestation(ciphertext_b64)` function to securely decrypt it within the enclave BEFORE passing it to the user's logic. Remember to `import json` and decode the decrypted bytes via `json.loads(decrypted_bytes.decode('utf-8'))` to get the actual data object before parsing it.
+
+RULES:
+- Only import the exact classes/functions you actually use.
+- Output ONLY a valid JSON dictionary. Do not output markdown code blocks. Do not output explanations.
+- The JSON dictionary must contain exactly two keys: "user_imports" and "user_logic".
+- Both keys must contain a JSON Array of strings (a list of strings). Each string represents one line of python code. This avoids any newline escaping issues. Keep indentation correct in the strings.
+
+EXAMPLE OUTPUT FORMAT:
+{{
+  "user_imports": [
+    "from core.scoring import score_transaction",
+    "from schemas.transaction import Transaction"
+  ],
+  "user_logic": [
+    "    # If data is KMS encrypted, decrypt it first",
+    "    if isinstance(data, dict) and 'ciphertext_b64' in data:",
+    "        import json",
+    "        data = json.loads(kms_decrypt_with_attestation(data['ciphertext_b64']).decode('utf-8'))",
+    "",
+    "    txn = Transaction(**data)",
+    "    result = score_transaction(txn)",
+    "    return result.model_dump()"
+  ]
+}}
+
+USER APP SOURCE CODE:
+{source_code}
+
+USER APP DESCRIPTION:
+{app_description}
+
+SAMPLE DATA PAYLOAD (`data` will be a single dictionary similar to one item from here):
+{data_content}
+
+Previous Attempt Failed with Error:
+{error_feedback}
+
+Return ONLY the raw JSON dictionary. No markdown, no explanations.

@@ -1,0 +1,30 @@
+[
+  {
+    "txn_id": "TXN-001",
+    "user_id": "U-1234",
+    "amount": 15000.00,
+    "currency": "USD",
+    "timestamp": "2023-10-27T10:00:00Z",
+    "merchant_category": "RETAIL",
+    "location": {
+      "lat": 40.7128,
+      "lon": -74.0060,
+      "country_code": "US"
+    },
+    "device_id": "DEV-101"
+  },
+  {
+    "txn_id": "TXN-002",
+    "user_id": "U-5678",
+    "amount": 500.00,
+    "currency": "USD",
+    "timestamp": "2023-10-27T10:05:00Z",
+    "merchant_category": "GAMBLING",
+    "location": {
+      "lat": 55.7558,
+      "lon": 37.6173,
+      "country_code": "XX"
+    },
+    "device_id": "DEV-999"
+  }
+]

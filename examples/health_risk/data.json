@@ -1,0 +1,46 @@
+[
+  {
+    "patient_id": "12345",
+    "age": 67,
+    "blood_pressure_systolic": 150,
+    "blood_pressure_diastolic": 95,
+    "heart_rate": 88,
+    "cholesterol_ldl": 175,
+    "cholesterol_hdl": 38,
+    "smoker": true,
+    "diabetic": true
+  },
+  {
+    "patient_id": "67890",
+    "age": 45,
+    "blood_pressure_systolic": 118,
+    "blood_pressure_diastolic": 76,
+    "heart_rate": 70,
+    "cholesterol_ldl": 110,
+    "cholesterol_hdl": 55,
+    "smoker": false,
+    "diabetic": false
+  },
+  {
+    "patient_id": "ABC01",
+    "age": 80,
+    "blood_pressure_systolic": 165,
+    "blood_pressure_diastolic": 100,
+    "heart_rate": 95,
+    "cholesterol_ldl": 200,
+    "cholesterol_hdl": 30,
+    "smoker": true,
+    "diabetic": true
+  },
+  {
+    "patient_id": "XYZ99",
+    "age": 29,
+    "blood_pressure_systolic": 105,
+    "blood_pressure_diastolic": 68,
+    "heart_rate": 62,
+    "cholesterol_ldl": 90,
+    "cholesterol_hdl": 65,
+    "smoker": false,
+    "diabetic": false
+  }
+]
