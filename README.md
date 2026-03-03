@@ -19,6 +19,9 @@ For the required AWS IAM permissions, see [docs/iam_permissions.md](docs/iam_per
 
 **Setup checklist:** Homebrew → Python 3.11 → LLM (llama.cpp) → Docker → Terraform → AWS credentials + `.env` → `make install` → `source venv/bin/activate`
 
+**Tested on:** macOS 26.3, Apple MacBook Pro 16‑inch, M4 Pro, 48 GB RAM.  
+Lighter machines may work, but enclave builds (Docker-in-Docker + Nitro CLI) **and running local LLMs** are CPU/RAM intensive.
+
 ### 1. Install Homebrew
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
