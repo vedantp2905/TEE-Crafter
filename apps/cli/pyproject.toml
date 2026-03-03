@@ -1,0 +1,127 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tee_crafter"
+version = "0.1.0"
+description = "Deploy a Dockerfile / OCI image into hardware TEEs with attestation, audit, and signed provenance"
+readme = "README.md"
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "click==8.1.8",
+    "python-dotenv==1.2.2",
+    "pyflakes==3.4.0",
+    "boto3==1.42.54",
+    "google-cloud-kms==3.16.0",
+    "cbor2==5.8.0",
+    "cryptography==46.0.5",
+    "PyJWT[crypto]==2.12.1",
+    "requests==2.32.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.0.2",
+    "pytest-mock==3.15.1",
+    "ruff==0.16.3",
+    # Runtime dependency of the in-TEE code, not of the CLI: it parses the CMS
+    # EnvelopedData that KMS returns in CiphertextForRecipient. Listed here so
+    # the CMS round-trip test actually executes instead of being skipped, which
+    # would leave the unwrap covered on paper only.
+    "asn1crypto==1.5.1",
+]
+
+[project.scripts]
+tee-crafter = "tee_crafter.cli.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "integration: marks tests that require external services or cloud credentials",
+]
+# `integration` is deselected by default: those tests read artefacts that only
+# exist after byok-sandbox/<cloud>/create_*_key.py has run against a real
+# KMS/Key Vault, so a plain `pytest` in a fresh clone would fail on files that
+# are correctly absent.  Run them with `pytest -m integration` once you have
+# provisioned a key.  CI passes the same filter explicitly.
+addopts = "-q --tb=short -m 'not integration'"
+
+[tool.ruff]
+# `*.template.py` files are not valid Python until `render_*_template()` has
+# substituted their placeholders, so `user_logic` / `measurements_json` and
+# friends read as undefined names.  Linting them is meaningless; the rendered
+# output is what runs, and the render path is covered by the template tests.
+extend-exclude = ["src/tee_crafter/templates/**/*.template.py"]
+
+[tool.ruff.lint]
+# Pinned explicitly.  With no `select`, the active ruleset is whatever the
+# installed ruff version happens to default to, which makes CI non-reproducible
+# — it went from clean to 3251 findings on a version bump.  This is the
+# correctness subset: real errors, not style opinions.
+select = [
+    "E9",    # syntax / IO errors
+    "F",     # pyflakes: undefined names, unused imports, f-string bugs
+    "B",     # bugbear: mutable defaults, unused loop vars, assert-on-tuple
+    "RUF013",# implicit Optional
+]
+ignore = [
+    "B008",  # function call in default arg — Click's idiom for options
+    "B905",  # zip(strict=) — repo targets 3.9+
+    "B904",  # raise-without-from: worth doing, but it is a 53-site style
+             # sweep, not a correctness fix.  Deliberately not gating CI on it.
+    "B007",  # unused loop control variable.  It only inspects the loop *body*,
+             # and the poll loops here read `attempt` after the loop to report
+             # elapsed time (`elapsed = (attempt + 1) * 5`).  Renaming to
+             # `_attempt` on B007's advice produced three F821s.
+    # ISC is NOT selected.  ISC004 fires on every `("title", "body line one "
+    # "body line two")` tuple in this repo — 25 hits, all deliberate, none a
+    # missing comma.  A rule with a 100% false-positive rate trains you to
+    # ignore the linter.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-export shims: the imports are the point.
+"src/tee_crafter/core/*/__init__.py" = ["F401", "F403"]
+"src/tee_crafter/__init__.py" = ["F401", "F403"]
+# These are re-export shims one level down.  Each package `__init__.py` does
+# `from <mod> import *`, so an import that looks unused inside the module is
+# actually part of the package's public surface — deleting it breaks
+# `from tee_crafter.core.enclave import build_enclave` and friends.
+"src/tee_crafter/core/enclave/enclave.py" = ["F401"]
+"src/tee_crafter/core/iac/iac.py" = ["F401"]
+"src/tee_crafter/core/iac/platforms.py" = ["F401"]
+"src/tee_crafter/core/audit/audit.py" = ["F401"]
+"src/tee_crafter/core/audit/report.py" = ["F401"]
+"src/tee_crafter/core/builder/builder.py" = ["F401"]
+"src/tee_crafter/core/builder/platforms.py" = ["F401"]
+"src/tee_crafter/core/compliance/registry.py" = ["F401"]
+"src/tee_crafter/core/compliance/engine.py" = ["F401"]
+
+[tool.setuptools.package-data]
+tee_crafter = [
+    "resources/systemd/*.service",
+    "resources/systemd/*.template",
+    "measurements/*/*.json",
+    # Vendor attestation trust anchors.  Without these an installed wheel has
+    # no root of trust: every verifier would load an empty trust store.  A
+    # missing anchor is now a hard error (see core/builder/platforms.py), so
+    # omitting them here breaks the CLI loudly rather than silently.
+    "certs/*.pem",
+    # Enclave/container templates and the seccomp profile referenced by
+    # cli/loaders.py and the platform setup scripts.
+    "templates/**/*",
+    # Listed separately because a glob `*` does not match a leading dot, so
+    # `templates/**/*` above silently skips these.  `stage_provider_lock`
+    # copies them into the build dir; without them in the wheel every install
+    # resolves providers unpinned and no two builds are reproducible.
+    "templates/**/.terraform.lock.hcl",
+    "scripts/**/*",
+]

@@ -1,0 +1,218 @@
+# Gramine manifest for TEE-Crafter SGX variant.
+# Placeholders: {python_path}, {arch_libdir}, {enclave_size}, {max_threads}
+# are replaced by core/builder/ at build time.
+
+[libos]
+entrypoint = "{python_path}"
+
+[loader]
+log_level = "error"
+argv = ["{python_path}", "/app/app_gramine.py"]
+# Gramine hardening: never take argv / env from the untrusted host — any
+# host-supplied content would change behaviour without changing MRENCLAVE.
+insecure__use_cmdline_argv = false
+insecure__use_host_env = false
+
+[loader.entrypoint]
+uri = "file:{{ gramine.libos }}"
+
+[loader.env]
+LD_LIBRARY_PATH = "/lib:{arch_libdir}:/usr/{arch_libdir}"
+PYTHONDONTWRITEBYTECODE = "1"
+PYTHONPATH = "/app"
+HOME = "/app"
+OPENBLAS_NUM_THREADS = "1"
+MKL_NUM_THREADS = "1"
+OMP_NUM_THREADS = "1"
+
+# Gramine runtime mounts
+[[fs.mounts]]
+path = "/lib"
+uri = "file:{{ gramine.runtimedir() }}"
+type = "chroot"
+
+[[fs.mounts]]
+path = "{arch_libdir}"
+uri = "file:{arch_libdir}"
+type = "chroot"
+
+[[fs.mounts]]
+path = "/usr/{arch_libdir}"
+uri = "file:/usr/{arch_libdir}"
+type = "chroot"
+
+# Python interpreter and standard library
+[[fs.mounts]]
+path = "{python_path}"
+uri = "file:{python_path}"
+type = "chroot"
+
+[[fs.mounts]]
+path = "{{ python.stdlib }}"
+uri = "file:{{ python.stdlib }}"
+type = "chroot"
+
+[[fs.mounts]]
+path = "{{ python.platstdlib }}"
+uri = "file:{{ python.platstdlib }}"
+type = "chroot"
+
+[[fs.mounts]]
+path = "{{ python.purelib }}"
+uri = "file:{{ python.purelib }}"
+type = "chroot"
+
+[[fs.mounts]]
+path = "{{ python.get_path('platlib') }}"
+uri = "file:{{ python.get_path('platlib') }}"
+type = "chroot"
+
+# Application code
+[[fs.mounts]]
+path = "/app"
+uri = "file:app/"
+type = "chroot"
+
+# Temporary storage.  This is a `chroot` passthrough to the *host's* /tmp and
+# is listed in `allowed_files` below: unmeasured, unencrypted host storage.
+# Nothing secret may be written here — see the /ratls tmpfs mount below.
+[[fs.mounts]]
+path = "/tmp"
+uri = "file:/tmp"
+type = "chroot"
+
+# RA-TLS key material.  `tmpfs` is Gramine's in-enclave-memory filesystem:
+# its files "are not backed by host-level files" and are destroyed when the
+# Gramine instance terminates (Gramine manifest-syntax docs, "FS mount
+# points" -> tmpfs).  app_gramine.template.py writes the transient RA-TLS
+# cert/key PEMs here instead of /tmp so the TLS private key never lands on
+# host-visible storage.  A tmpfs mount takes no `uri` — there is no host
+# path to point at, which is the entire point.
+[[fs.mounts]]
+path = "/ratls"
+type = "tmpfs"
+
+# DNS resolution
+[[fs.mounts]]
+path = "/etc/resolv.conf"
+uri = "file:/etc/resolv.conf"
+type = "chroot"
+
+[[fs.mounts]]
+path = "/etc/hosts"
+uri = "file:/etc/hosts"
+type = "chroot"
+
+# Runtime logs (written by audit/monitor/key-rotation helpers).
+#
+# The SGX systemd unit creates /var/log/tee_crafter via LogsDirectory= and
+# grants write access via ReadWritePaths=.  We must also mount it into the
+# enclave FS; otherwise Gramine denies writes with EACCES.
+[[fs.mounts]]
+path = "/var/log/tee_crafter"
+uri = "file:/var/log/tee_crafter"
+type = "chroot"
+
+# SGX configuration.  Only two of these settings are security controls; the
+# rest are performance or CPU-compatibility knobs and are labelled as such,
+# because calling them hardening was misleading.
+#
+# Security-relevant:
+#   debug=false                    — no SGX debug enclave, so no EDBGRD/EDBGWR
+#                                    from the host.  Gramine folds this into
+#                                    the enclave's ATTRIBUTES, so flipping it
+#                                    changes the attested identity.
+#   insecure__rpc_thread_num=0     — the "exitless" untrusted RPC threads are
+#                                    off.  Gramine: "RPC threads issue system
+#                                    calls on behalf of enclave threads"; each
+#                                    one is an extra host-side thread in the
+#                                    attack surface, so we keep zero.
+#
+# Not security controls (kept for performance / CPU compatibility):
+#   preheat_enclave=true           — Gramine: "Pre-fault all heap pages during
+#                                    initialization. This has a negative impact
+#                                    on the total run time, but shifts the EPC
+#                                    page faults cost to the initialization
+#                                    phase."  Latency shaping, nothing more.
+#   require_avx / require_avx512 /
+#   require_mpx / require_pkru     — CPU feature availability gates.  They do
+#                                    not affect the constant-time behaviour of
+#                                    any primitive we use.
+#   use_exinfo=true                — Gramine: "User application can retrieve
+#                                    faulting address in signal handler in case
+#                                    of page/general protection faults".  This
+#                                    application installs no such handler, so
+#                                    today the flag buys nothing; it is left on
+#                                    because turning it off would change
+#                                    MRENCLAVE for no benefit.
+#   edmm_enable=false / enable_stats=false — sizing and telemetry.
+[sgx]
+enclave_size = "{enclave_size}"
+max_threads = {max_threads}
+remote_attestation = "dcap"
+edmm_enable = false
+debug = false
+preheat_enclave = true
+require_avx = true
+require_avx512 = false
+require_mpx = false
+require_pkru = false
+use_exinfo = true
+enable_stats = false
+# Explicit zero = no insecure RPC fast-path (any non-zero value would
+# spawn a host-side async RPC thread per enclave thread, widening TCB).
+insecure__rpc_thread_num = 0
+
+# Trusted files: these are measured and included in MRENCLAVE.
+# Any modification causes MRENCLAVE to change -> attestation fails.
+trusted_files = [
+    "file:{{ gramine.libos }}",
+    "file:{python_path}",
+    "file:{{ gramine.runtimedir() }}/",
+    "file:{arch_libdir}/",
+    "file:/usr/{arch_libdir}/",
+    "file:{{ python.stdlib }}/",
+    "file:{{ python.platstdlib }}/",
+    "file:{{ python.purelib }}/",
+    "file:{{ python.get_path('platlib') }}/",
+    "file:app/",
+]
+
+# Allowed (untrusted) files: not measured, accessible but not integrity-protected.
+allowed_files = [
+    "file:/tmp",
+    "file:/etc/resolv.conf",
+    "file:/etc/hosts",
+    "file:/var/log/tee_crafter",
+]
+
+# LibOS tuning.  There is no syscall allowlist here — Gramine emulates the
+# syscalls it supports and returns -ENOSYS for the rest; this block does not
+# restrict which ones the application may issue.
+#
+# ACCEPTED HOST-TRUST CONCESSION — enable_sigterm_injection = true
+#
+#   Gramine's default is false, and its docs warn that "in SGX environment,
+#   the untrusted host could inject that signal in an arbitrary moment".
+#   Setting it true means the untrusted host can terminate the enclave at
+#   will: enclave *liveness* is under host control.  We accept that trade
+#   deliberately, because the host already controls the enclave process
+#   lifecycle (it can SIGKILL gramine-sgx regardless), and because
+#   `systemctl stop`/`restart` of sgx-*.service must reach the drain
+#   handler in app_gramine.template.py (`_sigterm_handler`) rather than
+#   hard-killing a request mid-flight.
+#
+#   What the concession does NOT cost: confidentiality and integrity are
+#   unaffected — the injected signal only sets `_shutdown = True`, and the
+#   handler performs no host-influenced work.  A host that wants to deny
+#   service can do so anyway.
+#
+#   If your threat model treats availability as in-scope, set this to false
+#   and accept that stopping the service becomes a hard kill.
+[sys]
+enable_sigterm_injection = true
+stack_size = "1M"
+brk_max_size = "32M"
+# Disable Gramine's host-side eventfd proxy — the untrusted host can
+# synthesise wake-ups through it.
+insecure__allow_eventfd = false
