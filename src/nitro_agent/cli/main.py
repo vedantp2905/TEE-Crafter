@@ -445,17 +445,38 @@ def deploy_from_build(build_dir, enclave_cpu, enclave_ram, auto_approve, teardow
 @click.option('--teardown', is_flag=True, default=False, help='Automatically destroy resources after successful client run.')
 @click.option('--instance-type', default=None, type=str, help='Override EC2 instance type for the host (e.g. c6g.xlarge).')
 @click.option('--no-spot', is_flag=True, default=False, help='Use an On-Demand Instance instead of a Spot Instance.')
-def deploy(source, enclave_cpu, enclave_ram, prompt_vsock, prompt_iac, deploy, auto_approve, data_file, teardown, instance_type, no_spot):
+@click.option('--llm-provider', default='local', type=click.Choice(['local', 'openai', 'anthropic', 'gemini'], case_sensitive=False), help='LLM provider to use for code generation (default: local).')
+def deploy(source, enclave_cpu, enclave_ram, prompt_vsock, prompt_iac, deploy, auto_approve, data_file, teardown, instance_type, no_spot, llm_provider):
     """Deploy a Python application to an AWS Nitro Enclave."""
+
+    from nitro_agent.llm.engine import set_provider, _PROVIDER_DISPLAY
+    try:
+        set_provider(llm_provider)
+    except ValueError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        return
+
     console.print(
         Panel.fit(
             f"[bold blue]Nitro-Agent Deploy[/bold blue]\n\n"
             f"Source: [green]{os.path.abspath(source)}[/green]\n"
-            f"Resources: {enclave_cpu} vCPU, {enclave_ram} MB RAM",
+            f"Resources: {enclave_cpu} vCPU, {enclave_ram} MB RAM\n"
+            f"LLM Provider: [cyan]{_PROVIDER_DISPLAY.get(llm_provider.lower(), llm_provider)}[/cyan]",
             border_style="blue",
         )
     )
-    
+
+    if llm_provider.lower() != "local":
+        provider_name = _PROVIDER_DISPLAY.get(llm_provider.lower(), llm_provider)
+        console.print(
+            Panel.fit(
+                f"[bold yellow]Third-party LLM in use[/bold yellow]\n\n"
+                f"Your source code will be sent to [cyan]{provider_name}[/cyan]'s API for code generation.\n"
+                f"Do not use for sensitive or proprietary code unless you accept their data and privacy policy.",
+                border_style="yellow",
+            )
+        )
+
     # Alias enclave_* options to internal cpu/ram variables
     cpu = enclave_cpu
     ram = enclave_ram

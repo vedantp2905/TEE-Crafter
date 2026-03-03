@@ -33,20 +33,44 @@ Nitro-Agent requires Python 3.11 for reproducible builds and compatible cryptogr
 brew install python@3.11
 ```
 
-### 3. Install and Run Local LLM
-Nitro-Agent requires a local OpenAI-compatible LLM server. We recommend `llama.cpp` with the **Qwen2.5-Coder-7B** model.
+### 3. LLM Setup
 
-**Install:**
+Nitro-Agent supports **four LLM providers**. Choose one via the `--llm-provider` flag:
+
+| Provider | Flag | Model (default) | API Key Env Var |
+|----------|------|-----------------|-----------------|
+| **Local** (default) | `--llm-provider local` | Qwen2.5-Coder-7B via llama.cpp | *None (runs locally)* |
+| **OpenAI** | `--llm-provider openai` | `gpt-4o` | `OPENAI_API_KEY` |
+| **Anthropic** | `--llm-provider anthropic` | `claude-sonnet-4-20250514` | `ANTHROPIC_API_KEY` |
+| **Google Gemini** | `--llm-provider gemini` | `gemini-2.5-flash` | `GEMINI_API_KEY` |
+
+**Option A: Local LLM (default, code never leaves your machine)**
+
 ```bash
 brew install llama.cpp
 ```
 
-**Run Server** (keep running in a separate terminal):
+Run the server (keep running in a separate terminal):
 ```bash
 llama-server -hf bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q8_0 \
   --port 8080 \
   -c 65851
 ```
+
+**Option B: Cloud LLM provider**
+
+All providers (OpenAI, Anthropic, Gemini) are included by default. Add your API key to `.env`:
+```ini
+OPENAI_API_KEY=sk-...
+# or
+ANTHROPIC_API_KEY=sk-ant-...
+# or
+GEMINI_API_KEY=...
+```
+
+You can override the default model with `OPENAI_MODEL`, `ANTHROPIC_MODEL`, or `GEMINI_MODEL` in `.env`.
+
+> **Note:** When using cloud providers, your source code is sent to the provider's API for code generation. The local provider keeps all code on your machine.
 
 ### 4. Install and Start Docker
 Docker is required to build the Enclave Image File (.eif).
@@ -87,7 +111,7 @@ source venv/bin/activate
 
 ## Quick Start
 
-1.  **Start the LLM server** (in a separate terminal):
+1.  **Start your LLM** (skip this step if using a cloud provider):
     ```bash
     llama-server -hf bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q8_0 --port 8080 -c 65851
     ```

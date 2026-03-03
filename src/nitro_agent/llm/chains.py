@@ -36,7 +36,13 @@ def generate_vsock_wrapper(app_description: str, source_code: str, data_content:
     Now uses a static template for networking/attestation, and the LLM
     only fills in the `user_imports` and `user_logic`.
     """
-    llm = get_llm_engine()
+    from .engine import get_provider, _PROVIDER_DISPLAY
+    try:
+        llm = get_llm_engine()
+    except (ValueError, ImportError) as e:
+        raise RuntimeError(f"Failed to initialize LLM engine: {e}") from e
+
+    provider = get_provider()
     last_error = ""
     vsock_template = _load_template("app_vsock.template.py")
     
@@ -51,7 +57,34 @@ def generate_vsock_wrapper(app_description: str, source_code: str, data_content:
             "error_feedback": last_error  # Always provide it, even if empty
         }
             
-        result = chain.invoke(inputs)
+        try:
+            result = chain.invoke(inputs)
+        except Exception as api_err:
+            provider_name = _PROVIDER_DISPLAY.get(provider, provider)
+            err_msg = str(api_err)
+            if "401" in err_msg or "403" in err_msg or "invalid" in err_msg.lower() and "key" in err_msg.lower():
+                raise RuntimeError(
+                    f"{provider_name} API authentication failed. "
+                    f"Check that your API key is valid and has not expired.\n"
+                    f"Error: {err_msg}"
+                ) from api_err
+            if "429" in err_msg or "rate" in err_msg.lower():
+                raise RuntimeError(
+                    f"{provider_name} API rate limit exceeded. "
+                    f"Wait a moment and try again, or check your usage quota.\n"
+                    f"Error: {err_msg}"
+                ) from api_err
+            if "quota" in err_msg.lower() or "billing" in err_msg.lower() or "insufficient" in err_msg.lower():
+                raise RuntimeError(
+                    f"{provider_name} API quota/billing error. "
+                    f"Check your account billing and usage limits.\n"
+                    f"Error: {err_msg}"
+                ) from api_err
+            raise RuntimeError(
+                f"{provider_name} API error during code generation.\n"
+                f"Error: {err_msg}"
+            ) from api_err
+
         raw_content = getattr(result, "content", None) or str(result) or ""
         cleaned_json_str = _clean_markdown_code_blocks(raw_content)
 
