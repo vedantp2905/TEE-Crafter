@@ -280,7 +280,23 @@ def run_vsock_server():
     server_sock.bind((socket.VMADDR_CID_ANY, VSOCK_PORT))
     server_sock.listen(5)
     logging.info(f"Listening on vsock port {VSOCK_PORT}")
-    
+
+    # One-time startup report for build provenance audit (stdout so nitro-cli console captures it)
+    try:
+        startup_report = {
+            "audit": "enclave_startup",
+            "steps": [
+                "rsa_key_generated",
+                "loopback_interface_up",
+                "dns_patch_kms_to_loopback",
+                "tcp_to_vsock_proxy_listening",
+                "vsock_server_listening",
+            ],
+        }
+        print(json.dumps(startup_report), flush=True)
+    except Exception:
+        pass
+
     while True:
         client_sock, addr = server_sock.accept()
         logging.info(f"Client connected: {addr}")
@@ -321,10 +337,15 @@ def run_vsock_server():
             # 2. Data Processing Path
             else:
                 logging.info("[VSOCK] -> Data processing path")
-                logging.info(f"[VSOCK] Data keys after creds pop: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}")
                 seed_entropy_from_kms()
+                ciphertext_b64 = data.get("ciphertext_b64") if isinstance(data, dict) else None
+                if not ciphertext_b64:
+                    raise ValueError("Data path requires 'ciphertext_b64' in payload")
+                logging.info("[VSOCK] Decrypting ciphertext via KMS attestation...")
+                plaintext_bytes = kms_decrypt_with_attestation(ciphertext_b64)
+                plaintext_obj = json.loads(plaintext_bytes.decode("utf-8"))
                 logging.info("[VSOCK] Entropy seeding done, calling process_request...")
-                results = process_request(data)
+                results = process_request(plaintext_obj)
                 logging.info(f"[VSOCK] process_request returned type={type(results).__name__}")
                 response = json.dumps(results, default=str)
                 logging.info(f"[VSOCK] Response JSON size: {len(response)} bytes")

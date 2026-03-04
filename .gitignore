@@ -12,3 +12,5 @@ __pycache__/
 !src/nitro_agent/resources/root.pem
 *.plan.md
 *.DS_Store
+*.zip
+research_paper/

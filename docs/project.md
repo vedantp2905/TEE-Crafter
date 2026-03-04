@@ -126,6 +126,21 @@ Once the instance is running, Nitro-Agent performs the final setup and verificat
 7.  **Result Capture:** Output is saved to `client_output.json` (or `.txt`) in the build directory.
 8.  **Error Debugging:** On failure, the CLI fetches `host-proxy.service` logs, `nitro-enclaves-vsock-proxy.service` logs, and the enclave console output via SSM. Enclave error responses include the full exception type, message, and traceback.
 9.  **Teardown (Optional):** If `--teardown` is specified, runs `terraform destroy` to remove all AWS resources.
+10. **Build Provenance:** After each build (and after deployment if `--deploy` was used), a hash-chained audit trail is written to the build directory: `build_provenance.json` (machine-readable) and `build_provenance.txt` (human-readable). It records template hashes, PCR values, TCB substeps, and deployment verification results—never credentials or keys. Verify chain integrity with `nitro-agent verify-provenance --file builds/.../build_provenance.json`.
+
+---
+
+## Build Provenance (Audit Trail)
+
+**Module:** `core/audit.py`
+
+Every run of `deploy` or `deploy-from-build` produces a **build provenance** record in the build directory. No new CLI arguments are required; the trail is always generated.
+
+*   **Output files:** `build_provenance.json` (full chain + metadata) and `build_provenance.txt` (summary report).
+*   **Contents:** Phase-by-phase entries: ingestion hashes, template (TCB) hashes, enclave TCB substeps (RSA key gen, vsock server, KMS decrypt, CMS unwrap, etc.), EIF/PCR values, Terraform config hash and security checks (KMS PCR-bound, HTTPS-only, no SSH), deployment steps, and (when deploy ran) enclave runtime startup report from console.
+*   **Integrity:** Each entry includes a `prev_hash` linking to the previous entry’s digest, forming a tamper-evident chain. Altering any entry invalidates all subsequent hashes.
+*   **Verification:** Run `nitro-agent verify-provenance --file <path-to-build_provenance.json>` to re-compute the chain and confirm it is intact. Exit code 0 on success, 1 on tampering or invalid file.
+*   **Safety:** Details are sanitized before storage; values that look like AWS keys or PEM private keys are redacted. No credentials, session tokens, or plaintext data are ever recorded.
 
 ---
 
@@ -152,6 +167,7 @@ Once the instance is running, Nitro-Agent performs the final setup and verificat
 | | `core/iac.py` | Terraform staging with PCR injection, init/validate/apply/destroy/output |
 | | `core/ssm.py` | SSM command execution, S3 file upload, SSM readiness polling |
 | | `core/verification.py` | pyflakes code validation, Docker build verification, server detection |
+| | `core/audit.py` | Build provenance audit trail (hash-chained entries, sanitization, verify-provenance) |
 | **LLM** | `llm/engine.py` | LangChain `ChatOpenAI` engine targeting local `llama-server` |
 | | `llm/chains.py` | AI-powered vsock wrapper generation with self-healing retry |
 | | `llm/iac.py` | Deterministic Terraform generation from template, instance type selection |

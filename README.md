@@ -138,46 +138,66 @@ source venv/bin/activate
     *   The local client performs **remote attestation** -- verifying the COSE_Sign1 signature, PCR hashes, and the full certificate chain against the AWS Nitro hardware root of trust -- before encrypting and sending data.
     *   Inside the enclave, the data is decrypted via KMS using the `Recipient` attestation parameter. The **CMS envelope** returned by KMS is unwrapped locally (RSA + AES), routed through a VPC Interface Endpoint and a pure-Python TCP-to-VSOCK proxy. The host never sees plaintext.
     *   Output is saved to `builds/.../client_output.json`.
+    *   A **build provenance audit trail** is written to `builds/.../build_provenance.json` and `build_provenance.txt` (hash-chained record of every security step; no secrets). Verify integrity with `nitro-agent verify-provenance --file builds/.../build_provenance.json`.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `nitro-agent deploy --source <dir> --enclave-cpu N --enclave-ram M [--deploy] [--auto-approve] [--teardown] ...` | Ingest source, generate enclave + Terraform, optionally deploy. See `nitro-agent deploy --help` for all options. |
+| `nitro-agent deploy-from-build --build-dir <path> --enclave-cpu N --enclave-ram M [--auto-approve] [--teardown] ...` | Deploy from an existing build directory (skips ingestion and EIF build). |
+| `nitro-agent destroy --build-dir <path>` | Destroy Terraform-managed resources for a build. |
+| `nitro-agent verify-provenance --file <path>` | Verify the hash chain of a build provenance file (e.g. `builds/.../build_provenance.json`). |
+
+**New in audit trail:** There are no new arguments on `deploy` or `deploy-from-build`; the audit trail is always generated and saved to the build directory. The only new command is **`verify-provenance`**, which takes a required `--file` pointing to `build_provenance.json`.
+
+### CLI arguments (main options)
+
+| Option | Description |
+|--------|-------------|
+| `--source` | App source directory (required for `deploy`) |
+| `--build-dir` | Build directory (required for `deploy-from-build`, `destroy`, or `verify-provenance --file`) |
+| `--enclave-cpu` / `--enclave-ram` | vCPUs and RAM (MB) for the enclave |
+| `--deploy` | Run Terraform apply and post-deploy |
+| `--auto-approve` | Skip Terraform confirmation |
+| `--teardown` | Destroy resources after a successful client run |
+| `--data-file` | Path to `data.json` (default: `./data.json` in source dir) |
+| `--llm-provider` | `local` \| `openai` \| `anthropic` \| `gemini` (default: local) |
+| `--instance-type` | EC2 instance type (e.g. c6g.xlarge) |
+| `--no-spot` | Use On-Demand instead of Spot |
+| `--file` | Path to `build_provenance.json` (for `verify-provenance`) |
 
 ## Project Structure
 
 ```
 nitro-agent/
 ├── src/nitro_agent/
-│   ├── cli/main.py              # CLI entrypoint and deploy orchestration
+│   ├── cli/                     # CLI entrypoint, helpers, deployment & command modules
+│   │   ├── main.py              # Click group, registers commands
+│   │   ├── deployment/          # Terraform apply, SSM setup, enclave/proxy, client run
+│   │   └── commands/           # deploy, deploy-from-build, destroy, verify-provenance
 │   ├── core/
 │   │   ├── ingestion.py         # Source directory scanner
 │   │   ├── builder.py           # Template rendering and artifact staging
 │   │   ├── enclave.py           # EIF build, PCR extraction (Docker-in-Docker)
 │   │   ├── iac.py               # Terraform stage/validate/apply/destroy
 │   │   ├── ssm.py               # AWS SSM commands and S3 file transfer
-│   │   └── verification.py      # pyflakes validation, Docker build checks
+│   │   ├── verification.py     # pyflakes validation, Docker build checks
+│   │   └── audit.py             # Build provenance audit trail (hash-chained)
 │   ├── llm/
-│   │   ├── engine.py            # LangChain ChatOpenAI engine (local llama-server)
+│   │   ├── engine.py            # LangChain engine (local / OpenAI / Anthropic / Gemini)
 │   │   ├── chains.py            # AI vsock wrapper generation with self-healing
-│   │   ├── iac.py               # Deterministic Terraform generation from template
+│   │   ├── iac.py               # Deterministic Terraform from template
 │   │   └── prompts/             # LLM system prompts and templates
-│   ├── templates/
-│   │   ├── app_vsock.template.py       # Enclave vsock server (KMS decrypt, CMS unwrap, attestation)
-│   │   ├── client.template.py          # Attestation client (COSE_Sign1, cert chain, PCR verify)
-│   │   ├── host_proxy.template.py      # FastAPI HTTPS blind proxy
-│   │   ├── Dockerfile.template         # Multi-stage: Rust nsm-cli + Alpine Python
-│   │   ├── main.template.tf            # Terraform (EC2, KMS, S3, IAM, VPC Endpoints)
-│   │   └── remote_setup_script.sh      # SSM remote setup script
+│   ├── templates/               # Enclave, client, host proxy, Dockerfile, Terraform, remote setup
 │   └── resources/
-│       └── root.pem                    # AWS Nitro Root CA certificate
-├── examples/                    # Ready-to-deploy example applications
-│   ├── hr_salary_analytics/     # Pay equity analysis
-│   ├── fintech_fraud_detection/ # Transaction fraud scoring
-│   ├── health_risk/             # Patient risk assessment
-│   ├── private_bidding_engine/  # Vickrey sealed-bid auction
-│   └── secure_ml_inference/     # Brain health ML inference
-├── docs/                        # Documentation (project.md, examples.md, instance_sizing.md, iam_permissions.md)
-├── builds/                      # Generated build output directories (timestamped)
-├── pyproject.toml               # Package definition and dependencies
-├── requirements.txt             # Pinned runtime + dev dependencies
-├── Makefile                     # install, clean targets
-└── .env.example                 # Environment variable template
+│       └── root.pem             # AWS Nitro Root CA certificate
+├── examples/                    # Example applications (hr_salary_analytics, fintech_fraud_detection, …)
+├── docs/                        # project.md, examples.md, instance_sizing.md, iam_permissions.md
+├── builds/                      # Generated build output (timestamped)
+├── pyproject.toml
+├── Makefile
+└── .env.example
 ```
 
 ## Features
@@ -191,6 +211,7 @@ nitro-agent/
 *   **Enclave Entropy:** Supplements the NSM hardware RNG with 256 bytes from KMS `GenerateRandom` on first use.
 *   **Comprehensive Debug Logging:** On failure, the CLI automatically fetches host-proxy service logs, vsock-proxy logs, and enclave console output. Error responses from the enclave include the full exception type and traceback.
 *   **Full Automation:** From source code to live enclave in one command via AWS SSM.
+*   **Build Provenance:** Every build produces a tamper-evident audit trail (`build_provenance.json` + `build_provenance.txt`) recording template hashes, PCRs, and security substeps. Verify with `nitro-agent verify-provenance --file <path>`.
 
 ## Troubleshooting
 
