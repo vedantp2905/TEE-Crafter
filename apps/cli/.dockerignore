@@ -1,0 +1,15 @@
+# Exclude from Docker build context
+.git
+.gitignore
+venv
+builds
+*.egg-info
+__pycache__
+.pytest_cache
+.env
+*.pyc
+.DS_Store
+evaluation
+*.md
+!README.md
+.gcloud
