@@ -1,0 +1,169 @@
+#include <tunables/global>
+
+# Batch AppArmor profile for TEE-Crafter user containers.
+#
+# This profile is loaded alongside ``tee-crafter-container`` and is applied
+# only by the batch unit (``container.batch.service.template``).  Service
+# mode runs a tee-crafter-built image with a known filesystem layout, so it
+# uses the stricter ``tee-crafter-container`` profile.  Batch mode runs
+# arbitrary user images whose paths are unknown at deploy time, so the
+# strict profile would routinely break workloads that legitimately write
+# to e.g. ``/data``, ``/output``, ``/workspace``.
+#
+# Design: deny the same dangerous syscalls, capabilities, and host-kernel
+# interfaces as the strict profile.  Allow filesystem paths broadly so the
+# user image can write wherever its ENTRYPOINT expects — confinement comes
+# from cap-drop, seccomp, no-new-privileges, and the network deny-list,
+# *not* from path allowlisting.  The cgroup, pid namespace, and
+# ``--read-only`` mounts on the orchestrator side prevent host escape.
+#
+# Containers must be launched with
+# ``--security-opt apparmor=tee-crafter-batch-container``.
+profile tee-crafter-batch-container flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/openssl>
+  #include <abstractions/nameservice>
+
+  # ----------------------------------------------------------------------
+  # Hard denies — sensitive host interfaces that must never leak into the
+  # container even if a broad filesystem allow rule below would otherwise
+  # match.  AppArmor evaluates explicit denies before allows.
+  # ----------------------------------------------------------------------
+  deny /proc/acpi/** rwklx,
+  deny /proc/asound/** rwklx,
+  deny /proc/bus/** rwklx,
+  deny /proc/fs/** rwklx,
+  deny /proc/irq/** rwklx,
+  deny /proc/kcore rwklx,
+  deny /proc/kallsyms rwklx,
+  deny /proc/kmem rwklx,
+  deny /proc/keys rwklx,
+  deny /proc/latency_stats rwklx,
+  deny /proc/mem rwklx,
+  deny /proc/scsi/** rwklx,
+  deny /proc/sched_debug rwklx,
+  deny /proc/schedstat rwklx,
+  deny /proc/sysrq-trigger rwklx,
+  deny /proc/timer_list rwklx,
+  deny /proc/timer_stats rwklx,
+  deny /proc/softirqs rwklx,
+  deny /proc/zoneinfo rwklx,
+  deny /proc/*/attr/** rwklx,
+  deny /proc/*/syscall rwklx,
+  deny /proc/*/mem rwklx,
+  deny /proc/*/pagemap rwklx,
+  deny /proc/*/maps wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/fs/cgroup/** wklx,
+  deny /sys/fs/selinux/** rwklx,
+  deny /sys/kernel/** rwklx,
+  deny /sys/power/** rwklx,
+  deny /sys/module/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/devices/virtual/dmi/** rwklx,
+  deny /boot/** rwklx,
+  deny /etc/kubernetes/** rwklx,
+  deny /var/run/docker.sock rwklx,
+  deny /var/run/containerd/** rwklx,
+  deny /run/docker.sock rwklx,
+  deny /run/containerd/** rwklx,
+
+  # ----------------------------------------------------------------------
+  # Mount / namespace escape primitives — always deny.
+  # ----------------------------------------------------------------------
+  deny mount,
+  deny umount,
+  deny remount,
+  deny pivot_root,
+  deny change_profile,
+
+  # ----------------------------------------------------------------------
+  # ptrace — deny both directions (no reading or attaching to peer procs).
+  # ----------------------------------------------------------------------
+  deny ptrace (read, readby, trace, tracedby),
+
+  # ----------------------------------------------------------------------
+  # Network — allow-list IPv4/IPv6/UNIX; deny exotic / legacy families.
+  # ----------------------------------------------------------------------
+  deny network raw,
+  deny network packet,
+  deny network netlink,
+  deny network bluetooth,
+  deny network can,
+
+  network inet stream,
+  network inet dgram,
+  network inet6 stream,
+  network inet6 dgram,
+  network unix stream,
+  network unix dgram,
+
+  # ----------------------------------------------------------------------
+  # Capability bounding — deny dangerous caps even if docker granted them.
+  # The batch unit also passes ``--cap-drop ALL``; this is defence-in-depth.
+  # ----------------------------------------------------------------------
+  deny capability audit_control,
+  deny capability audit_write,
+  deny capability block_suspend,
+  deny capability dac_read_search,
+  deny capability ipc_owner,
+  deny capability lease,
+  deny capability linux_immutable,
+  deny capability mac_admin,
+  deny capability mac_override,
+  deny capability net_admin,
+  deny capability net_broadcast,
+  deny capability net_raw,
+  deny capability perfmon,
+  deny capability setpcap,
+  deny capability sys_admin,
+  deny capability sys_boot,
+  deny capability sys_chroot,
+  deny capability sys_module,
+  deny capability sys_pacct,
+  deny capability sys_ptrace,
+  deny capability sys_rawio,
+  deny capability sys_resource,
+  deny capability sys_time,
+  deny capability sys_tty_config,
+  deny capability syslog,
+  deny capability wake_alarm,
+
+  # ----------------------------------------------------------------------
+  # Filesystem — permissive by design.  The orchestrator already bind-mounts
+  # ``/input`` read-only, locks ``/tmp`` to a tmpfs, and captures writes via
+  # ``docker diff``.  Allowing broad rw lets arbitrary user images run; the
+  # explicit denies above keep host kernel state out of reach.
+  # ----------------------------------------------------------------------
+  #
+  # The bare ``/`` needs its own rule: in AppArmor, ``/**`` matches paths with
+  # at least one character after the slash and does **not** match the root
+  # directory itself.  Easy to miss, because the profile reads as "allow
+  # everything" and does allow everything except one path.
+  #
+  # This was not academic.  It broke every `sgx-azure --batch` run: Gramine's
+  # loader opens ``/`` while setting up its own filesystem view, and the denial
+  # surfaced as an EACCES from inside the enclave that named a Gramine mount
+  # rather than AppArmor, so it read like a manifest problem::
+  #
+  #   [P1:T1:] error: Mounting "file:/" (chroot) under / failed: EACCES
+  #   [P1:T1:] error: libos_init() failed in init_mount_root: EACCES
+  #
+  # The kernel said it plainly, though, and that is what identified it —
+  # confirmed on real SGX hardware on 2026-08-23::
+  #
+  #   apparmor="DENIED" operation="open" profile="tee-crafter-batch-container"
+  #   name="/" comm="loader" requested_mask="r"
+  #
+  # Adding this line makes the enclave start.  Note the strict profile
+  # (``apparmor-container``) has carried ``/ r,`` all along; only this one
+  # drifted, which is why service mode never hit it.
+  / rwlkmix,
+  /** rwlkmix,
+
+  # Signals within the container.
+  signal (send, receive) peer=tee-crafter-batch-container,
+  signal (receive) set=(term, int, hup, quit, usr1, usr2, pipe, alrm, chld),
+
+  dbus,
+}

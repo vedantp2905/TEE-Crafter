@@ -1,0 +1,101 @@
+# Docker-in-TEE: User image + Nitro runtime overlay
+#
+# The user's image becomes the final base so their runtime, packages, and
+# system libraries are preserved.  TEE-Crafter layers nsm-cli, crypto deps,
+# and the vsock proxy on top.  An entrypoint script starts both the user's
+# original CMD and the RA-TLS proxy.
+
+# Stage 1: Build the NSM CLI helper (statically linked, works on any Linux)
+FROM rust:alpine AS nsm-builder
+RUN apk add --no-cache musl-dev git python3
+
+WORKDIR /build
+RUN cargo new nsm-cli
+WORKDIR /build/nsm-cli
+
+RUN echo 'aws-nitro-enclaves-nsm-api = "0.4"' >> Cargo.toml && \
+    echo 'base64 = "0.21"' >> Cargo.toml && \
+    echo 'serde_bytes = "0.11"' >> Cargo.toml
+
+COPY nsm_main.rs src/main.rs
+
+RUN cargo build --release && strip /build/nsm-cli/target/release/nsm-cli
+
+# Stage 2: User image + TEE runtime
+FROM __USER_IMAGE__
+
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir \
+    "cryptography>=42.0,<44" \
+    "asn1crypto>=1.5,<2" \
+    "boto3>=1.34,<2" \
+    "requests>=2.31,<3" && \
+    find /usr/local/lib/python*/site-packages/botocore/data/ \
+      -mindepth 1 -maxdepth 1 -type d \
+      ! -name 'kms' ! -name 'sts' ! -name 's3' ! -name 's3control' \
+      -exec rm -rf {} + 2>/dev/null; true
+
+RUN apk add --no-cache iproute2 2>/dev/null || \
+    (apt-get update -qq && apt-get install -y -qq iproute2 && rm -rf /var/lib/apt/lists/*) 2>/dev/null || \
+    yum install -y iproute 2>/dev/null || true
+
+COPY --from=nsm-builder /build/nsm-cli/target/release/nsm-cli /usr/local/bin/nsm-cli
+
+RUN useradd -r -s /usr/sbin/nologin tee_app 2>/dev/null || adduser -S -D -H tee_app 2>/dev/null || true
+
+COPY app_vsock.py /tee-crafter-runtime/app_vsock.py
+COPY tee_entrypoint.sh /tee-crafter-runtime/tee_entrypoint.sh
+
+# The in-TEE runtime modules `app_vsock.py` imports.  On Nitro the *container is
+# the enclave*, so anything the app imports has to be inside this image;
+# `tee_entrypoint.sh` runs `python3 /tee-crafter-runtime/app_vsock.py`, which
+# makes /tee-crafter-runtime sys.path[0], and no PYTHONPATH is set.
+#
+# These were staged into the build directory (fail-closed, see
+# core/builder/runtime_modules.py) but never copied the last hop into the image.
+# Every import in app_vsock.py is `except ImportError: pass`, so on a real
+# `nitro-aws --persistent` deploy the audit-log wrapper, the SIEM-SEC-4
+# freshness gate, the BYOK release gate and the SIEM-SEC-5 per-request seccomp
+# sandbox were all silently inert, and `bootstrap_chain_commitment()` could not
+# run — so the enclave published an empty `chain_key_commitment` and every
+# client correctly refused to connect. Measured on real hardware 2026-08-20:
+# enclave RUNNING with valid PCRs, attestation doc 6120 B, commitment len=0.
+#
+# That client-side refusal was the only fail-closed check in the set, and it is
+# the reason this surfaced as a broken deploy rather than as a TEE quietly
+# serving traffic with four gates switched off. Keep this list in step with the
+# imports at the top of the platform app template.
+COPY tee_crafter_audit_logger.py /tee-crafter-runtime/tee_crafter_audit_logger.py
+COPY tee_crafter_runtime_bootstrap.py /tee-crafter-runtime/tee_crafter_runtime_bootstrap.py
+COPY tee_crafter_handler_sandbox.py /tee-crafter-runtime/tee_crafter_handler_sandbox.py
+COPY tee_crafter_key_rotation.py /tee-crafter-runtime/tee_crafter_key_rotation.py
+COPY tee_crafter_attestation_monitor.py /tee-crafter-runtime/tee_crafter_attestation_monitor.py
+COPY siem_health.py /tee-crafter-runtime/siem_health.py
+COPY byok_health.py /tee-crafter-runtime/byok_health.py
+# The attestation exporter runs *inside* the enclave on Nitro (see
+# app_vsock.start_in_enclave_siem_export).  It used to run only as a host-side
+# sidecar, which is why the fail-closed gate was inert here: the health file it
+# wrote lived on the parent instance, in a different namespace from the
+# `siem_health` reader above, and no SIEM variable crossed into the EIF at all.
+#
+# `siem.env.public` carries the non-secret half of the SIEM config (provider,
+# collector host/port, interval, and the enabled / fail-open flags) and is
+# measured along with everything else here.  The bearer credential is
+# deliberately NOT in it — `siem_mode.SECRET_ENV_KEYS` strips the Splunk HEC
+# token and the Datadog API key from this file, and they reach the enclave over
+# the attested `--secrets-env` channel instead, so no live credential is baked
+# into an image whose hash gets published.  Both files are empty when --siem is
+# off, which leaves TEE_CRAFTER_SIEM_ENABLED unset and the exporter dormant.
+COPY siem_export.py /tee-crafter-runtime/siem_export.py
+COPY siem.env.public /tee-crafter-runtime/siem.env.public
+# Plaintext app config/secrets baked here only in the no-BYOK path; empty
+# otherwise (BYOK-sealed secrets are decrypted to tmpfs at runtime instead).
+COPY app.env /tee-crafter-runtime/app.env
+RUN chmod +x /tee-crafter-runtime/tee_entrypoint.sh
+
+ENV TEE_CRAFTER_CONTAINER_PORT=__CONTAINER_PORT__
+
+USER tee_app
+
+ENTRYPOINT ["/tee-crafter-runtime/tee_entrypoint.sh"]
+CMD []

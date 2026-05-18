@@ -1,0 +1,248 @@
+#include <tunables/global>
+
+# Strict AppArmor profile for TEE-Crafter user containers.
+#
+# Policy is deny-by-default.  We explicitly allow only the paths and
+# operations that a Python FastAPI/uvicorn workload inside a confidential
+# enclave legitimately needs.  No blanket `/** rw` or `/** ix` rules.
+#
+# Containers must be launched with `--security-opt apparmor=tee-crafter-container`.
+#
+# Paths:
+#   /app/            — application bundle (read-only code + wheels)
+#   /opt/venv/       — pre-baked Python virtualenv (read-execute)
+#   /tmp/            — scratch (read-write, private to the container namespace)
+#   /var/log/tee-crafter/ — append-only audit log
+#   /var/lib/tee-crafter/ — persistent state (baseline, sealed keys)
+#   /dev/sev-guest, /dev/sgx_enclave, /dev/tdx-guest, /dev/nvidia* — TEE devices
+#       (the container must only be granted the one that matches its platform)
+profile tee-crafter-container flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/openssl>
+  #include <abstractions/nameservice>
+
+  # ----------------------------------------------------------------------
+  # Hard denies — sensitive host interfaces that must never leak into the
+  # container even if a path below accidentally allows them.
+  # ----------------------------------------------------------------------
+  deny /proc/acpi/** rwklx,
+  deny /proc/asound/** rwklx,
+  deny /proc/bus/** rwklx,
+  deny /proc/fs/** rwklx,
+  deny /proc/irq/** rwklx,
+  deny /proc/kcore rwklx,
+  deny /proc/kallsyms rwklx,
+  deny /proc/kmem rwklx,
+  deny /proc/keys rwklx,
+  deny /proc/latency_stats rwklx,
+  deny /proc/mem rwklx,
+  deny /proc/scsi/** rwklx,
+  deny /proc/sched_debug rwklx,
+  deny /proc/schedstat rwklx,
+  deny /proc/sysrq-trigger rwklx,
+  deny /proc/timer_list rwklx,
+  deny /proc/timer_stats rwklx,
+  deny /proc/softirqs rwklx,
+  deny /proc/zoneinfo rwklx,
+  deny /proc/*/attr/** rwklx,
+  deny /proc/*/syscall rwklx,
+  deny /proc/*/mem rwklx,
+  deny /proc/*/pagemap rwklx,
+  deny /proc/*/maps rwklx,
+  deny /proc/*/root/** rwklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/fs/cgroup/** wklx,
+  deny /sys/fs/selinux/** rwklx,
+  deny /sys/kernel/** rwklx,
+  deny /sys/power/** rwklx,
+  deny /sys/module/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/devices/virtual/dmi/** rwklx,
+  deny /boot/** rwklx,
+  deny /etc/kubernetes/** rwklx,
+  deny /root/** rwklx,
+  deny /home/*/** rwklx,
+  deny /var/run/docker.sock rwklx,
+  deny /var/run/containerd/** rwklx,
+  deny /run/docker.sock rwklx,
+  deny /run/containerd/** rwklx,
+
+  # ----------------------------------------------------------------------
+  # Mount / namespace escape primitives — always deny.
+  # ----------------------------------------------------------------------
+  deny mount,
+  deny umount,
+  deny remount,
+  deny pivot_root,
+  deny change_profile,
+
+  # ----------------------------------------------------------------------
+  # ptrace — deny both directions (no reading or attaching to peer procs).
+  # ----------------------------------------------------------------------
+  deny ptrace (read, readby, trace, tracedby),
+
+  # ----------------------------------------------------------------------
+  # Network — allow-list only: TCP/UDP over inet/inet6 and AF_UNIX.
+  # Every other address family is implicitly denied by AppArmor once any
+  # `network` allow rule is present.  We deliberately do NOT enumerate
+  # legacy families (decnet/rose/ipx/appletalk/x25/atm/tipc/kcm/rds/...)
+  # in explicit `deny` rules: newer AppArmor parsers on Ubuntu 22.04+
+  # reject unknown address families with "Invalid network entry" and
+  # refuse to load the profile at all, which makes `docker run` fail
+  # with a cryptic `fsmount:fscontext:...apparmor/exec` error.
+  # ----------------------------------------------------------------------
+  deny network raw,
+  deny network packet,
+  deny network netlink,
+  deny network bluetooth,
+  deny network can,
+
+  network inet stream,
+  network inet dgram,
+  network inet6 stream,
+  network inet6 dgram,
+  network unix stream,
+  network unix dgram,
+
+  # ----------------------------------------------------------------------
+  # Capability bounding — deny all dangerous caps even if docker granted
+  # them by accident.
+  # ----------------------------------------------------------------------
+  deny capability audit_control,
+  deny capability audit_write,
+  deny capability block_suspend,
+  deny capability dac_read_search,
+  deny capability ipc_owner,
+  deny capability lease,
+  deny capability linux_immutable,
+  deny capability mac_admin,
+  deny capability mac_override,
+  deny capability net_admin,
+  deny capability net_broadcast,
+  deny capability net_raw,
+  deny capability perfmon,
+  deny capability setpcap,
+  deny capability sys_admin,
+  deny capability sys_boot,
+  deny capability sys_chroot,
+  deny capability sys_module,
+  deny capability sys_nice,
+  deny capability sys_pacct,
+  deny capability sys_ptrace,
+  deny capability sys_rawio,
+  deny capability sys_resource,
+  deny capability sys_time,
+  deny capability sys_tty_config,
+  deny capability syslog,
+  deny capability wake_alarm,
+
+  # ----------------------------------------------------------------------
+  # Allowed filesystem paths.
+  # ----------------------------------------------------------------------
+
+  # Root filesystem — only read directory entries.
+  / r,
+  /bin/ r,
+  /lib/ r,
+  /lib64/ r,
+  /usr/ r,
+
+  # Read-only system libraries & binaries required to execute Python.
+  /bin/** mrix,
+  /usr/bin/** mrix,
+  /usr/sbin/** mrix,
+  /usr/local/bin/** mrix,
+  /lib/** mr,
+  /lib64/** mr,
+  /usr/lib/** mr,
+  /usr/lib64/** mr,
+  /usr/local/lib/** mr,
+  /usr/share/** r,
+  /etc/ r,
+  /etc/** r,
+
+  # Application bundle — read-only, executable for python imports.
+  /app/ r,
+  /app/** mrix,
+  /opt/venv/ r,
+  /opt/venv/** mrix,
+  /opt/tee-crafter/ r,
+  /opt/tee-crafter/** mrix,
+
+  # Writable scratch and log dirs.
+  /tmp/ rw,
+  /tmp/** rwlk,
+  /var/tmp/ rw,
+  /var/tmp/** rwlk,
+  /var/log/tee-crafter/ rw,
+  /var/log/tee-crafter/** rwlk,
+  /var/lib/tee-crafter/ rw,
+  /var/lib/tee-crafter/** rwlk,
+  /run/tee-crafter/ rw,
+  /run/tee-crafter/** rwlk,
+
+  # Python import / metadata – required for runtime.
+  /proc/ r,
+  /proc/*/status r,
+  /proc/*/stat r,
+  /proc/*/cmdline r,
+  /proc/*/fd/ r,
+  /proc/*/fd/** r,
+  /proc/self/** r,
+  /proc/cpuinfo r,
+  /proc/meminfo r,
+  /proc/loadavg r,
+  /proc/uptime r,
+  /proc/sys/kernel/random/boot_id r,
+  /proc/sys/kernel/random/uuid r,
+  /proc/sys/kernel/osrelease r,
+
+  /sys/ r,
+  /sys/devices/system/cpu/** r,
+  /sys/class/net/ r,
+  /sys/class/net/*/ r,
+  /sys/class/net/*/address r,
+  /sys/class/net/*/mtu r,
+  /sys/class/tpm/ r,
+  /sys/class/tpm/*/pcr-sha256/** r,
+  /sys/kernel/config/tsm/ r,
+  /sys/kernel/config/tsm/** r,
+
+  # TEE hardware devices — narrow allowlist.  The container runtime
+  # is expected to bind-mount only the device matching its platform.
+  /dev/urandom r,
+  /dev/random r,
+  /dev/null rw,
+  /dev/zero r,
+  /dev/full rw,
+  /dev/tty rw,
+  /dev/sev-guest rw,
+  /dev/sev rw,
+  /dev/sgx_enclave rw,
+  /dev/sgx_provision rw,
+  /dev/sgx/enclave rw,
+  /dev/sgx/provision rw,
+  /dev/tdx-guest rw,
+  /dev/tpm0 rw,
+  /dev/tpmrm0 rw,
+  /dev/nvidia0 rw,
+  /dev/nvidia1 rw,
+  /dev/nvidia2 rw,
+  /dev/nvidia3 rw,
+  /dev/nvidia4 rw,
+  /dev/nvidia5 rw,
+  /dev/nvidia6 rw,
+  /dev/nvidia7 rw,
+  /dev/nvidiactl rw,
+  /dev/nvidia-uvm rw,
+  /dev/nvidia-uvm-tools rw,
+  /dev/nvidia-caps/** rw,
+  /dev/nvidia-modeset rw,
+
+  # Signals within the container.
+  signal (send, receive) peer=tee-crafter-container,
+  signal (receive) set=(term, int, hup, quit, usr1, usr2, pipe, alrm, chld),
+
+  # File locking / dbus bits needed by some libs.
+  dbus,
+}
