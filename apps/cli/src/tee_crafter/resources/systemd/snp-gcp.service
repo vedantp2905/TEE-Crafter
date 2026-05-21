@@ -1,0 +1,92 @@
+[Unit]
+Description=TEE-Crafter SNP GCP Application
+After=network.target
+
+[Service]
+Type=simple
+User=tee_enclave
+Group=tee_enclave
+SupplementaryGroups=kvm
+WorkingDirectory=/opt/tee-crafter-snp/app
+ExecStartPre=+/bin/bash -c 'chgrp kvm /sys/kernel/config/tsm/report/ 2>/dev/null; chmod 0775 /sys/kernel/config/tsm/report/ 2>/dev/null; for d in /dev/sev-guest /dev/sev; do [ -c "$d" ] && chmod 0660 "$d" && chgrp kvm "$d"; done; true'
+ExecStart=/opt/tee-crafter-snp/venv/bin/python3 app_snp_gcp.py
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+# Continuous-attestation SIEM exporter reads its config from this file.
+# SIEM-SEC-2: token-bearing env on tmpfs (never persisted).
+EnvironmentFile=-/run/tee-crafter-snp-gcp/siem.env
+EnvironmentFile=-/opt/tee-crafter-snp/app/siem.env.public
+# BYOK-SEC-1: see tdx-gcp.service for rationale.
+EnvironmentFile=-/run/tee-crafter-snp-gcp/byok.env
+EnvironmentFile=-/opt/tee-crafter-snp/app/byok.env.public
+
+LogsDirectory=tee_crafter
+ReadWritePaths=/tmp /var/log/tee_crafter /opt/tee-crafter-snp -/dev/sev-guest -/dev/sev -/sys/kernel/config/tsm
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+# ProtectKernelTunables stays OFF, deliberately: it mounts /sys read-only, and
+# the configfs-tsm attestation path has to CREATE a report directory under
+# /sys/kernel/config/tsm/report to fetch a quote (see
+# core/keys/attestation_providers.py::_read_tdx_report and
+# core/measurements/capture.py).  Turning it on breaks attestation.
+ProtectKernelTunables=no
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+DeviceAllow=/dev/sev-guest rw
+DeviceAllow=/dev/sev rw
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @resources
+LimitNOFILE=65536
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+# Capabilities: none.  The service runs as the unprivileged `tee_enclave`
+# user and needs no capability at all -- the `+`-prefixed ExecStartPre above
+# runs with full privileges (systemd.service(5): with `+`, "privilege
+# restrictions configured with User=, Group=, CapabilityBoundingSet= or the
+# various file system namespacing options ... are not applied") and hands the
+# attestation device and the configfs-tsm report directory to the `kvm` group,
+# which this unit joins via SupplementaryGroups=.  Group membership, not a DAC
+# bypass, is what makes /dev/sev-guest, /dev/tdx-guest and
+# /sys/kernel/config/tsm/report reachable.
+#
+# This unit previously carried AmbientCapabilities=CAP_DAC_OVERRIDE, which let
+# the workload bypass every file permission check on the system -- far more
+# than the attestation path needs.  gpu-cc-aws.service and
+# gpu-cc-azure.service already run the same SEV-SNP / TDX device paths with an
+# empty CapabilityBoundingSet and no ambient capabilities, which is the
+# evidence that the capability was not load-bearing.
+CapabilityBoundingSet=
+SystemCallFilter=~@privileged @obsolete @raw-io @reboot @swap @debug @cpu-emulation @module @mount @keyring @pkey
+PrivateUsers=no
+RemoveIPC=yes
+KeyringMode=private
+ProtectProc=invisible
+# The cloud SDKs used by the BYOK release path and the SIEM exporter fetch
+# their credentials from the instance metadata service at 169.254.169.254
+# (boto3 IMDSv2, google-auth ADC via metadata.google.internal, azure-identity
+# ManagedIdentityCredential).  That address is inside `link-local`, so the deny
+# below would black-hole every credential fetch; the longer /32 prefix wins, so
+# this allow re-opens exactly the metadata service and nothing else.  Matches
+# nitro-aws.service, which has always allowed it explicitly.
+IPAddressAllow=169.254.169.254/32
+IPAddressDeny=link-local multicast
+# SBX-2: defence-in-depth process-wide ceilings.
+MemoryMax=16G
+TasksMax=4096
+TimeoutStartSec=90s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

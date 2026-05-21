@@ -1,0 +1,47 @@
+[Unit]
+Description={description}
+After=docker.service {after_service}
+Requires=docker.service
+{secrets_dep}StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStartPre=/bin/bash -c 'test -f {container_tar_path} && docker load -i {container_tar_path} || true'
+# Pre-flight: refuse to start if either the seccomp or the AppArmor
+# profile file is missing.  Failing open here would silently drop the
+# mandatory container confinement.
+ExecStartPre=/usr/bin/test -f /etc/tee_crafter/seccomp-container.json
+ExecStartPre=/usr/bin/test -f /etc/apparmor.d/tee-crafter-container
+# Guarantee the app env file exists (empty unless --secrets-env delivered one):
+# the in-TEE bootstrap writes attestation-released secrets here, and the no-BYOK
+# plaintext path stages config here. --env-file accepts an empty file.
+ExecStartPre=/bin/bash -c 'mkdir -p /run/tee_crafter && touch /run/tee_crafter/app.env && chmod 600 /run/tee_crafter/app.env'
+ExecStart=/usr/bin/docker run --rm --name tee-crafter \
+  --network host \
+  --ipc=private \
+  --cgroupns=private \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --security-opt seccomp=/etc/tee_crafter/seccomp-container.json \
+  --security-opt apparmor=tee-crafter-container \
+  --security-opt label=type:container_runtime_t \
+  --pids-limit 512 \
+  --ulimit nofile=65536:65536 \
+  --ulimit nproc=1024:2048 \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777 \
+  --tmpfs /run:rw,noexec,nosuid,nodev,size=16m \
+  --env-file /run/tee_crafter/app.env \
+  --log-driver=journald \
+  {extra_run_flags}tee-crafter:latest
+ExecStopPost=/usr/bin/docker rm -f tee-crafter
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120s
+TimeoutStopSec=30s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,62 @@
+[Unit]
+Description=TEE-Crafter SGX Enclave (Gramine)
+After=network.target aesmd.service
+
+[Service]
+Type=simple
+User=tee_enclave
+Group=tee_enclave
+WorkingDirectory={remote_base}
+ExecStart=/usr/bin/gramine-sgx app_gramine
+Restart=always
+RestartSec=5
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="PATH=/opt/tee-crafter-sgx/venv/bin:/usr/bin:/bin"
+Environment="VIRTUAL_ENV=/opt/tee-crafter-sgx/venv"
+
+LogsDirectory=tee_crafter
+ReadWritePaths=/tmp /var/log/tee_crafter {remote_base} -/dev/sgx_enclave -/dev/sgx_provision
+ProtectSystem=strict
+ProtectHome=no
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+DeviceAllow=/dev/sgx_enclave rw
+DeviceAllow=/dev/sgx_provision rw
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @resources
+LimitNOFILE=65536
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+CapabilityBoundingSet=
+SystemCallFilter=~@privileged @obsolete @raw-io @reboot @swap @debug @cpu-emulation @module @mount @keyring @pkey
+PrivateUsers=no
+RemoveIPC=yes
+KeyringMode=private
+ProtectProc=invisible
+# The cloud SDKs used by the BYOK release path and the SIEM exporter fetch
+# their credentials from the instance metadata service at 169.254.169.254
+# (boto3 IMDSv2, google-auth ADC via metadata.google.internal, azure-identity
+# ManagedIdentityCredential).  That address is inside `link-local`, so the deny
+# below would black-hole every credential fetch; the longer /32 prefix wins, so
+# this allow re-opens exactly the metadata service and nothing else.  Matches
+# nitro-aws.service, which has always allowed it explicitly.
+IPAddressAllow=169.254.169.254/32
+IPAddressDeny=link-local multicast
+# SBX-2: Gramine workloads are bounded.
+MemoryMax=8G
+TasksMax=2048
+TimeoutStartSec=120s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

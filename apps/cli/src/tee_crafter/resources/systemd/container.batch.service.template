@@ -1,0 +1,82 @@
+[Unit]
+Description={description} (batch)
+After=docker.service {after_service}
+Requires=docker.service
+{secrets_dep}
+
+[Service]
+# Type=oneshot: the user image runs to completion, then ExecStopPost diffs
+# the container, copies all changed/added paths back out, and tars them up
+# for download by the orchestrator.  Restart= must be 'no' so a non-zero
+# user exit code does not loop forever.
+Type=oneshot
+RemainAfterExit=no
+
+# Stage the input directory the orchestrator uploaded (if any) into a path
+# the user image can mount read-only.  The orchestrator drops it under
+# /var/lib/tee_crafter/input by convention.
+ExecStartPre=/bin/bash -c 'mkdir -p /var/lib/tee_crafter/input /var/lib/tee_crafter/capture; rm -rf /var/lib/tee_crafter/capture/*'
+# Pre-flight: refuse to start if either the seccomp or the batch AppArmor
+# profile is missing.  Failing open here would silently drop the
+# confinement layer that backstops cap-drop + no-new-privileges.  The
+# batch AppArmor profile (``tee-crafter-batch-container``) is permissive
+# on filesystem paths but deny-listed on host kernel interfaces, mount /
+# pivot_root / ptrace, dangerous capabilities, and exotic network families.
+# See src/tee_crafter/templates/common/apparmor-batch-container.
+ExecStartPre=/usr/bin/test -f /etc/tee_crafter/seccomp-container.json
+ExecStartPre=/usr/bin/test -f /etc/apparmor.d/tee-crafter-batch-container
+ExecStartPre=/bin/bash -c 'test -f {container_tar_path} && docker load -i {container_tar_path} || true'
+ExecStartPre=/bin/bash -c 'docker rm -f tee-crafter-batch >/dev/null 2>&1 || true'
+# Guarantee the app env file exists (empty unless --secrets-env delivered one).
+ExecStartPre=/bin/bash -c 'mkdir -p /run/tee_crafter && touch /run/tee_crafter/app.env && chmod 600 /run/tee_crafter/app.env'
+
+# Run the user image AS-IS: no --read-only, no CMD override.  The image's
+# ENTRYPOINT/CMD is what executes inside the TEE.  We mount /input read-only
+# so the user code can read what the orchestrator uploaded, plus a private
+# scratch /tmp.  No bind to host /opt/tee-crafter etc. — capture happens
+# entirely via `docker diff` after the container exits.
+#
+# Security-opt parity with the long-running container.service unit:
+# seccomp + AppArmor + SELinux label (defence-in-depth across the three
+# major LSMs).  AppArmor uses a permissive-path / strict-syscall profile
+# tailored for batch (see ``apparmor-batch-container``) so arbitrary user
+# images that write to ``/data``, ``/output``, ``/workspace`` etc. still
+# run, while mount/pivot_root/ptrace/dangerous-cap escapes are blocked.
+ExecStart=/usr/bin/docker run --name tee-crafter-batch \
+  --network host \
+  --ipc=private \
+  --cgroupns=private \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --security-opt seccomp=/etc/tee_crafter/seccomp-container.json \
+  --security-opt apparmor=tee-crafter-batch-container \
+  --security-opt label=type:container_runtime_t \
+  --pids-limit 512 \
+  --ulimit nofile=65536:65536 \
+  --ulimit nproc=1024:2048 \
+  --tmpfs /run:rw,noexec,nosuid,nodev,size=16m \
+  -v /var/lib/tee_crafter/input:/input:ro \
+  --env-file /run/tee_crafter/app.env \
+  --log-driver=journald \
+  {extra_run_flags}tee-crafter:latest
+
+# Always run capture, even on user-image failure — the diff/logs are exactly
+# what the operator needs to debug a failed batch job.  ExecStopPost runs
+# regardless of how ExecStart ended, so that property does not depend on the
+# leading `-`.
+#
+# There is deliberately NO leading `-` here.  This hook is the only thing that
+# produces output.tar.gz, so a capture that fails is a failed batch run, not a
+# footnote: with the dash, systemd discarded the status and the unit reported
+# success while the operator got nothing, discovering it only when the download
+# 404'd.  The script verifies its own post-condition (bundle exists, non-empty,
+# checksummed) before exiting 0 — see scripts/common/tee_crafter_capture_container.sh.
+ExecStopPost=/usr/local/bin/tee_crafter_capture_container.sh tee-crafter-batch /var/lib/tee_crafter/capture
+
+TimeoutStartSec={batch_timeout_sec}s
+TimeoutStopSec=120s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

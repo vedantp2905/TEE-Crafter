@@ -1,0 +1,78 @@
+[Unit]
+Description=TEE-Crafter GPU CC Application (AWS NitroTPM + NVIDIA CC)
+After=network-online.target nvidia-persistenced.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tee_enclave
+Group=tee_enclave
+SupplementaryGroups=tss
+WorkingDirectory=/opt/tee-crafter-gpu-cc/app
+ExecStartPre=+/usr/bin/nvidia-smi conf-compute -srs 1
+ExecStart=/opt/tee-crafter-gpu-cc/venv/bin/python3 app_gpu_cc_aws.py
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=-/opt/tee-crafter-gpu-cc/.env
+# SIEM-SEC-2: token-bearing env on tmpfs (never persisted).
+EnvironmentFile=-/run/tee-crafter-gpu-cc-aws/siem.env
+EnvironmentFile=-/opt/tee-crafter-gpu-cc/app/siem.env.public
+# BYOK-SEC-1: wrapped DEK / HSM bearer on tmpfs; non-secret half on disk.
+EnvironmentFile=-/run/tee-crafter-gpu-cc-aws/byok.env
+EnvironmentFile=-/opt/tee-crafter-gpu-cc/app/byok.env.public
+Environment=PYTHONUNBUFFERED=1
+Environment=NVIDIA_VISIBLE_DEVICES=all
+Environment=NVIDIA_DRIVER_CAPABILITIES=compute,utility
+StandardOutput=journal
+StandardError=journal
+
+LogsDirectory=tee_crafter
+ReadWritePaths=/tmp /var/log/tee_crafter /opt/tee-crafter-gpu-cc -/dev/tpm0 -/dev/tpmrm0
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=no
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @resources
+DeviceAllow=/dev/tpm0 rw
+DeviceAllow=/dev/tpmrm0 rw
+DeviceAllow=/dev/nvidia0 rw
+DeviceAllow=/dev/nvidiactl rw
+DeviceAllow=/dev/nvidia-uvm rw
+DeviceAllow=/dev/nvidia-uvm-tools rw
+LimitNOFILE=65536
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+CapabilityBoundingSet=
+SystemCallFilter=~@privileged @obsolete @raw-io @reboot @swap @debug @cpu-emulation @module @mount @keyring @pkey
+PrivateUsers=no
+RemoveIPC=yes
+KeyringMode=private
+ProtectProc=invisible
+# The cloud SDKs used by the BYOK release path and the SIEM exporter fetch
+# their credentials from the instance metadata service at 169.254.169.254
+# (boto3 IMDSv2, google-auth ADC via metadata.google.internal, azure-identity
+# ManagedIdentityCredential).  That address is inside `link-local`, so the deny
+# below would black-hole every credential fetch; the longer /32 prefix wins, so
+# this allow re-opens exactly the metadata service and nothing else.  Matches
+# nitro-aws.service, which has always allowed it explicitly.
+IPAddressAllow=169.254.169.254/32
+IPAddressDeny=link-local multicast
+# SBX-2: GPU-CC needs more RAM for CUDA contexts but keep tasks bounded.
+MemoryMax=80G
+TasksMax=8192
+TimeoutStartSec=90s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
