@@ -1,0 +1,32 @@
+{
+  "captured_at": "2026-08-24T01:12:17.290891Z",
+  "field": "measurement",
+  "image_id": "/subscriptions/060b9553-c6f3-43f4-a6bd-00943d41d0d7/resourceGroups/tee-crafter-images-snp-rg/providers/Microsoft.Compute/galleries/tee_crafter_snp_gallery/images/tee_crafter_snp_ubuntu/versions/2026.0824.005408",
+  "measurement": "b2b53ada66639958b707804dade56a9336a6bbd51e625ba93002ce8614482c198245c6d012196aa845353fe259fd0a34",
+  "measurements": [
+    "b2b53ada66639958b707804dade56a9336a6bbd51e625ba93002ce8614482c198245c6d012196aa845353fe259fd0a34"
+  ],
+  "platform": "snp-azure",
+  "source": "bake-ami",
+  "variants": [
+    {
+      "cpu_gen": "genoa",
+      "cpu_gen_source": "observed",
+      "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+      "measurement": "b2b53ada66639958b707804dade56a9336a6bbd51e625ba93002ce8614482c198245c6d012196aa845353fe259fd0a34",
+      "vcpu": 2,
+      "vm_size": "Standard_DC2as_v5"
+    },
+    {
+      "cpu_gen": "genoa",
+      "cpu_gen_source": "observed",
+      "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+      "measurement": "b2b53ada66639958b707804dade56a9336a6bbd51e625ba93002ce8614482c198245c6d012196aa845353fe259fd0a34",
+      "vcpu": 4,
+      "vm_size": "Standard_DC4as_v5"
+    }
+  ],
+  "vcpu_independent_gens": [
+    "genoa"
+  ]
+}

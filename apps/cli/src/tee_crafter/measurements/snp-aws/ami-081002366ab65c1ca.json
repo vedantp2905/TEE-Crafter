@@ -1,0 +1,72 @@
+{
+  "bake_inputs_sha256": "b3d9d025e35d09c2edb3d9e7d8bf0b76e26c2cfaa6960ae034bfa5d37a390755",
+  "capture_skipped_shapes": [
+    "m6a.4xlarge"
+  ],
+  "captured_at": "2026-08-24T09:36:47.630952Z",
+  "field": "measurement",
+  "image_id": "ami-081002366ab65c1ca",
+  "measurement": "507e82d27ea5b951dd765a3eb31ba5f582673b301d6983ded482d3feb066cb68979f1f11fede97687374d3a25002a15f",
+  "measurements": [
+    "507e82d27ea5b951dd765a3eb31ba5f582673b301d6983ded482d3feb066cb68979f1f11fede97687374d3a25002a15f",
+    "b756dde72c548e42560ba6b43955b68c1239682104c78fa07989ed3d15478107cb0e0a2a9637604586b9615eb8da7617",
+    "a7ad67701411520a26d0d5fbccdf59bc59609e2783b5a1268cd453180386d2f767757332d17b2b7a2a0b4da8a925628c",
+    "ecb285bd0c03866409fbf2a618637a01128f44e7e7e46c7245c225551005e2f2eec22c7d3d7d63cb0d1c6597da96ef9c"
+  ],
+  "nitrotpm_pcrs": {
+    "4": "8096dd3973822dbba6d3375337f65af7c7a25e5646e17f3aae3b1c8744f54c7041d5ae01aa0fcb45ea25fdfac530fa17",
+    "7": "0c5b5d244044b80984f796c5ab8bdaed351fd6d3b62aa454d809a13239a2643d42a25ad29eedba54879ef5fbe4e303d5"
+  },
+  "platform": "snp-aws",
+  "source": "bake-ami",
+  "variants": [
+    {
+      "cpu_gen": "milan",
+      "cpu_gen_source": "observed",
+      "cpu_model": "AMD EPYC 7R13 Processor",
+      "instance_type": "m6a.large",
+      "measurement": "507e82d27ea5b951dd765a3eb31ba5f582673b301d6983ded482d3feb066cb68979f1f11fede97687374d3a25002a15f",
+      "nitrotpm_pcrs": {
+        "4": "8096dd3973822dbba6d3375337f65af7c7a25e5646e17f3aae3b1c8744f54c7041d5ae01aa0fcb45ea25fdfac530fa17",
+        "7": "0c5b5d244044b80984f796c5ab8bdaed351fd6d3b62aa454d809a13239a2643d42a25ad29eedba54879ef5fbe4e303d5"
+      },
+      "vcpu": 2
+    },
+    {
+      "cpu_gen": "milan",
+      "cpu_gen_source": "observed",
+      "cpu_model": "AMD EPYC 7R13 Processor",
+      "instance_type": "m6a.xlarge",
+      "measurement": "b756dde72c548e42560ba6b43955b68c1239682104c78fa07989ed3d15478107cb0e0a2a9637604586b9615eb8da7617",
+      "nitrotpm_pcrs": {
+        "4": "8096dd3973822dbba6d3375337f65af7c7a25e5646e17f3aae3b1c8744f54c7041d5ae01aa0fcb45ea25fdfac530fa17",
+        "7": "0c5b5d244044b80984f796c5ab8bdaed351fd6d3b62aa454d809a13239a2643d42a25ad29eedba54879ef5fbe4e303d5"
+      },
+      "vcpu": 4
+    },
+    {
+      "cpu_gen": "milan",
+      "cpu_gen_source": "observed",
+      "cpu_model": "AMD EPYC 7R13 Processor",
+      "instance_type": "m6a.2xlarge",
+      "measurement": "a7ad67701411520a26d0d5fbccdf59bc59609e2783b5a1268cd453180386d2f767757332d17b2b7a2a0b4da8a925628c",
+      "nitrotpm_pcrs": {
+        "4": "8096dd3973822dbba6d3375337f65af7c7a25e5646e17f3aae3b1c8744f54c7041d5ae01aa0fcb45ea25fdfac530fa17",
+        "7": "0c5b5d244044b80984f796c5ab8bdaed351fd6d3b62aa454d809a13239a2643d42a25ad29eedba54879ef5fbe4e303d5"
+      },
+      "vcpu": 8
+    },
+    {
+      "cpu_gen": "milan",
+      "cpu_gen_source": "observed",
+      "cpu_model": "AMD EPYC 7R13 Processor",
+      "instance_type": "m6a.8xlarge",
+      "measurement": "ecb285bd0c03866409fbf2a618637a01128f44e7e7e46c7245c225551005e2f2eec22c7d3d7d63cb0d1c6597da96ef9c",
+      "nitrotpm_pcrs": {
+        "4": "8096dd3973822dbba6d3375337f65af7c7a25e5646e17f3aae3b1c8744f54c7041d5ae01aa0fcb45ea25fdfac530fa17",
+        "7": "0c5b5d244044b80984f796c5ab8bdaed351fd6d3b62aa454d809a13239a2643d42a25ad29eedba54879ef5fbe4e303d5"
+      },
+      "vcpu": 32
+    }
+  ]
+}

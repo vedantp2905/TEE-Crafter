@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-08-23T07:11:06.080784Z",
+  "field": "mrtd",
+  "image_id": "/subscriptions/060b9553-c6f3-43f4-a6bd-00943d41d0d7/resourceGroups/tee-crafter-images-tdx-rg/providers/Microsoft.Compute/galleries/tee_crafter_tdx_gallery/images/tee_crafter_tdx_ubuntu/versions/2026.0823.065615",
+  "measurements": [
+    "a2e61f1316e9e367e9c1f7a0adc98c48eb13875c399c85d286cee5ea2b05e57f2df9f61d903b0ae7ac5607d843dfffc1"
+  ],
+  "mrtd": "a2e61f1316e9e367e9c1f7a0adc98c48eb13875c399c85d286cee5ea2b05e57f2df9f61d903b0ae7ac5607d843dfffc1",
+  "platform": "tdx-azure",
+  "source": "bake-ami"
+}

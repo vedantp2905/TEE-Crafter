@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-08-24T01:37:05.317492Z",
+  "field": "measurement",
+  "image_id": "/subscriptions/060b9553-c6f3-43f4-a6bd-00943d41d0d7/resourceGroups/tee-crafter-images-gpu-cc-rg/providers/Microsoft.Compute/galleries/tee_crafter_gpu_cc_gallery/images/tee_crafter_gpu_cc_ubuntu/versions/2026.0824.010114",
+  "measurement": "aa7c9da55c1386e5b1653b125978beda7b3f95a85aeb0f9ddbbdb783ce056a28c9d021da239c34a58c3a657654270eef",
+  "measurements": [
+    "aa7c9da55c1386e5b1653b125978beda7b3f95a85aeb0f9ddbbdb783ce056a28c9d021da239c34a58c3a657654270eef"
+  ],
+  "platform": "gpu-cc-azure",
+  "source": "bake-ami",
+  "variants": [
+    {
+      "cpu_gen": "genoa",
+      "cpu_gen_source": "observed",
+      "cpu_model": "AMD EPYC 9V84 96-Core Processor",
+      "measurement": "aa7c9da55c1386e5b1653b125978beda7b3f95a85aeb0f9ddbbdb783ce056a28c9d021da239c34a58c3a657654270eef",
+      "vcpu": 40,
+      "vm_size": "Standard_NCC40ads_H100_v5"
+    }
+  ]
+}

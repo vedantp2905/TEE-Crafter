@@ -1,0 +1,35 @@
+[
+  {
+    "ami_id": "ami-0a6e51a20a2d3ed81",
+    "ami_name": "tee-crafter-snp-aws-20260824-004946",
+    "note": "Deregistering the AMI will NOT delete these snapshots.",
+    "platform": "snp-aws",
+    "recorded_at": "2026-08-24T00:59:07Z",
+    "region": "us-east-2",
+    "snapshot_ids": [
+      "snap-07a3dc2d0b475c876"
+    ]
+  },
+  {
+    "ami_id": "ami-070603b2133e92fef",
+    "ami_name": "(deregistered before the ledger existed)",
+    "note": "AMI already deregistered; snapshot orphaned and unlistable.",
+    "platform": "snp-aws",
+    "recorded_at": "2026-08-22T00:00:00Z",
+    "region": "us-east-2",
+    "snapshot_ids": [
+      "snap-05f937c10555a08ea"
+    ]
+  },
+  {
+    "ami_id": "ami-081002366ab65c1ca",
+    "ami_name": "tee-crafter-snp-aws-20260824-091036-tpm",
+    "note": "Deregistering the AMI will NOT delete these snapshots.",
+    "platform": "snp-aws",
+    "recorded_at": "2026-08-24T09:20:28Z",
+    "region": "us-east-2",
+    "snapshot_ids": [
+      "snap-0a85efb95f05bf13b"
+    ]
+  }
+]

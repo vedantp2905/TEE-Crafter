@@ -1,0 +1,36 @@
+{
+  "captured_at": "2026-08-24T00:56:06.836574Z",
+  "field": "measurement",
+  "image_id": "projects/project-39cf1aef-7543-4f99-84a/global/images/tee-crafter-snp-gcp-20260824-004947",
+  "measurement": "2d24cf9624ee36449e50c6c84042540b05898f6559f02741b7b354e0cc2ed18d108352ade7dfc4cecce4fa974e51c773",
+  "measurements": [
+    "2d24cf9624ee36449e50c6c84042540b05898f6559f02741b7b354e0cc2ed18d108352ade7dfc4cecce4fa974e51c773",
+    "e1bcdadef92887cb4512c079c485cf009100cf86d2276a27da2b1e9d150dd11b0b5cc6d4b40bbc9ff0575b63f679dc23",
+    "63e1ed00252d6e47d0f953b0eabd0851205ba5fea6d76eb708a8f02e7c41b6233c91155e795761f4e42ceb2ce2db2532"
+  ],
+  "platform": "snp-gcp",
+  "source": "bake-ami",
+  "variants": [
+    {
+      "cpu_gen": "milan",
+      "cpu_gen_source": "instance_type",
+      "machine_type": "n2d-standard-2",
+      "measurement": "2d24cf9624ee36449e50c6c84042540b05898f6559f02741b7b354e0cc2ed18d108352ade7dfc4cecce4fa974e51c773",
+      "vcpu": 2
+    },
+    {
+      "cpu_gen": "milan",
+      "cpu_gen_source": "instance_type",
+      "machine_type": "n2d-standard-4",
+      "measurement": "e1bcdadef92887cb4512c079c485cf009100cf86d2276a27da2b1e9d150dd11b0b5cc6d4b40bbc9ff0575b63f679dc23",
+      "vcpu": 4
+    },
+    {
+      "cpu_gen": "milan",
+      "cpu_gen_source": "instance_type",
+      "machine_type": "n2d-standard-8",
+      "measurement": "63e1ed00252d6e47d0f953b0eabd0851205ba5fea6d76eb708a8f02e7c41b6233c91155e795761f4e42ceb2ce2db2532",
+      "vcpu": 8
+    }
+  ]
+}
