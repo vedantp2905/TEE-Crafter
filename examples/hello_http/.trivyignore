@@ -1,0 +1,41 @@
+# Accepted findings for this example image.
+#
+# TEE-Crafter's vulnerability gate blocks on findings that have an upstream fix
+# (see apps/cli/src/tee_crafter/core/security/vuln_scan.py).  The two below are
+# reported as fixable but cannot be fixed in this image, for reasons that are
+# structural rather than a matter of bumping a version.  Each was traced to
+# ground before being listed here; do not add entries without doing the same.
+#
+# Both come from `site-packages/pip/_vendor/vendor.txt`, the pinned manifest of
+# pip's *own* vendored tree — not from this app's dependency set:
+#
+#   $ docker run --rm <image> grep -iE 'msgpack|setuptools' \
+#       /usr/local/lib/python3.12/site-packages/pip/_vendor/vendor.txt
+#   msgpack==1.1.2
+#   setuptools==70.3.0
+#
+# Neither is an installed package.  `pip list` in the built image reports
+# setuptools 84.0.0 and no msgpack at all, and the only other place the string
+# `70.3.0` appears is pip's own `_vendor/bom.cdx.json`.  So the `--upgrade
+# setuptools` in the Dockerfile does run, and cannot clear either finding.
+#
+# There is no upstream fix to wait for: pip 26.2.1 — the current release as of
+# 2026-08-22 — still pins exactly these two versions.
+#
+# Deleting pip from the image *does* clear both, and it was tried here on
+# 2026-08-22.  It is wrong: TEE-Crafter's Nitro overlay
+# (templates/common/Dockerfile.container.template) does `FROM __USER_IMAGE__`
+# followed by `RUN python -m pip install ...` to layer the TEE runtime on top of
+# the user image, so an image with no pip cannot be deployed to `nitro-aws` at
+# all.  Removing pip trades a suppressed finding for a broken platform.  The
+# same conclusion is recorded in examples/docker_flask_api/.trivyignore, which
+# reached it first.
+#
+# Re-check on a pip release that refreshes its vendored msgpack/setuptools, and
+# delete the corresponding line when it does.
+
+# setuptools: path traversal in PackageIndex. pip-vendored manifest entry only.
+CVE-2025-47273
+
+# msgpack: OOB read on Unpacker reuse. pip-vendored manifest entry only.
+GHSA-6v7p-g79w-8964

@@ -1,0 +1,32 @@
+[
+  {
+    "txn_id": "TXN-1001",
+    "user_id": "USR-4471",
+    "amount": 42.5,
+    "currency": "USD",
+    "timestamp": "2026-05-18T09:14:02Z",
+    "merchant_category": "GROCERY",
+    "location": { "lat": 47.6062, "lon": -122.3321, "country_code": "US" },
+    "device_id": "DEV-101"
+  },
+  {
+    "txn_id": "TXN-1002",
+    "user_id": "USR-4471",
+    "amount": 18400.0,
+    "currency": "USD",
+    "timestamp": "2026-05-18T09:31:47Z",
+    "merchant_category": "GAMBLING",
+    "location": { "lat": 47.6062, "lon": -122.3321, "country_code": "US" },
+    "device_id": "DEV-101"
+  },
+  {
+    "txn_id": "TXN-1003",
+    "user_id": "USR-8820",
+    "amount": 260.0,
+    "currency": "EUR",
+    "timestamp": "2026-05-18T10:02:11Z",
+    "merchant_category": "ELECTRONICS",
+    "location": { "lat": 0.0, "lon": 0.0, "country_code": "XX" },
+    "device_id": "DEV-999"
+  }
+]

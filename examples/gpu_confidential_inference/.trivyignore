@@ -1,0 +1,52 @@
+# Accepted findings for this example image.
+#
+# TEE-Crafter's vulnerability gate blocks on findings that have an upstream fix
+# (apps/cli/src/tee_crafter/core/security/vuln_scan.py; the thresholds are in
+# cli/commands/deploy/flow_container.py — fixable CRITICAL must be 0 and
+# fixable HIGH must be 0).  The two below are reported as fixable but cannot be
+# fixed in this image.  Each was traced to ground in the built image before
+# being listed here; do not add entries without doing the same.
+#
+# Both come from `site-packages/pip/_vendor/vendor.txt`, the pinned manifest of
+# pip's *own* vendored tree — not from anything this app or the PyTorch base
+# image installs.  Read out of `gpu-cc-example:fixed` on 2026-08-22:
+#
+#   $ grep -iE '^(msgpack|setuptools)' \
+#       /opt/conda/lib/python3.11/site-packages/pip/_vendor/vendor.txt
+#   msgpack==1.1.2
+#   setuptools==70.3.0
+#
+#   $ python -c "import importlib.metadata as m; print(m.version('setuptools'))"
+#   84.0.0
+#   $ python -c "import importlib.metadata as m; m.version('msgpack')"
+#   PackageNotFoundError
+#
+# So setuptools is installed at 84.0.0 — well past the 78.1.1 the finding asks
+# for — and msgpack is not installed at all.  Upgrading cannot clear either.
+#
+# There is no upstream fix to wait for: this image carries pip 26.2.1, the
+# current release, and it still vendors exactly these two versions.
+#
+# And pip cannot be removed.  TEE-Crafter's generated container Dockerfile does
+# `FROM __USER_IMAGE__` followed by `RUN python -m pip install`
+# (templates/common/Dockerfile.container.template) to layer the TEE runtime on
+# top, so stripping pip here breaks every deploy of this example.  The same
+# conclusion was reached the hard way in examples/hello_http.
+#
+# Re-check on a pip release that refreshes its vendored msgpack/setuptools, and
+# delete the corresponding line when it does.
+#
+# Deliberately NOT listed, so that they stay visible in the report:
+#   * CVE-2026-59890 — setuptools MEDIUM, same vendored 70.3.0 entry as
+#     CVE-2025-47273 below.  MEDIUM findings are gated at 25, and this image has
+#     3, so it does not block and does not need accepting.
+#   * CVE-2025-2999 / CVE-2025-3730 — torch MEDIUMs, fixed in 2.9.1 and 2.8.0.
+#     Genuinely fixable by moving the base image forward again; kept in the
+#     report because that is a real (if unforced) upgrade, not an accepted risk.
+#     See the Dockerfile for why the base sits at 2.6.0.
+
+# setuptools: path traversal in PackageIndex. pip-vendored manifest entry only.
+CVE-2025-47273
+
+# msgpack: OOB read on Unpacker reuse. pip-vendored manifest entry only.
+GHSA-6v7p-g79w-8964

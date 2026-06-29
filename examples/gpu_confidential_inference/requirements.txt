@@ -1,0 +1,29 @@
+torch==2.6.0
+torchvision==0.21.0
+
+# Linux/x86_64 CUDA stack pulled in transitively by torch==2.6.0.
+# Listed explicitly (without environment markers) so `pip download` on a
+# macOS / arm64 deployer still fetches them for the linux_x86_64 target —
+# pip evaluates markers against the running interpreter even when
+# --platform is forced.
+#
+# These are the versions the base image (pytorch/pytorch:2.6.0-cuda12.4-
+# cudnn9-runtime) actually has installed, read out of it with
+# `importlib.metadata` rather than copied from torch's PyPI metadata: the
+# published wheel on PyPI is the cu128 build, so its pins name different CUDA
+# versions than the cu124 image we run.  Matching the image is what keeps the
+# `pip install -r requirements.txt` step a no-op instead of a 2.5 GB reinstall.
+nvidia-cuda-nvrtc-cu12==12.4.127
+nvidia-cuda-runtime-cu12==12.4.127
+nvidia-cuda-cupti-cu12==12.4.127
+nvidia-cudnn-cu12==9.1.0.70
+nvidia-cublas-cu12==12.4.5.8
+nvidia-cufft-cu12==11.2.1.3
+nvidia-curand-cu12==10.3.5.147
+nvidia-cusolver-cu12==11.6.1.9
+nvidia-cusparse-cu12==12.3.1.170
+nvidia-cusparselt-cu12==0.6.2
+nvidia-nccl-cu12==2.21.5
+nvidia-nvtx-cu12==12.4.127
+nvidia-nvjitlink-cu12==12.4.127
+triton==3.2.0

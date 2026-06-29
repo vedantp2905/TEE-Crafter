@@ -1,0 +1,5 @@
+# ngrok Agent v3 — bind local API/UI on all interfaces so Docker can map :4041.
+# The `ngrok` CLI no longer accepts `--web-addr` (removed in v3); use `agent.web_addr`.
+version: 3
+agent:
+  web_addr: 0.0.0.0:4041

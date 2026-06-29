@@ -1,0 +1,21 @@
+# Keep secrets and local clutter out of the Docker build context.
+#
+# `.env` ships with this example so you can hand it to `--secrets-env`, which
+# seals it to the BYOK key and delivers it to the workload at runtime on tmpfs.
+# It must NOT reach the image: anything in the build context can be COPYed in,
+# and a secret baked into a measured image is a secret you cannot rotate.
+# `PKG-005` ("No .env / no secrets in build context", HIGH) checks this.
+.env
+.env.local
+*.pem
+*.key
+credentials.json
+id_rsa
+id_ed25519
+
+# Build/scan artefacts and caches — smaller context, faster builds.
+.tee_crafter_scan/
+__pycache__/
+*.pyc
+.git/
+venv/

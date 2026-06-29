@@ -1,0 +1,162 @@
+# Local Splunk Enterprise + nginx-as-ALB for TEE-Crafter SIEM development.
+#
+# Topology (mirrors the production AWS Fargate target shape):
+#
+#                          ┌──────────────────────────┐
+#                          │       nginx-alb          │
+#   localhost client ─┐    │  :8443 HTTPS (dev cert)  │
+#                     ├───▶│                          │
+#   ngrok agent ──────┘    │  :8080 HTTP (ngrok up)   │
+#                          └──────────────┬───────────┘
+#                                         │ HTTP
+#                                         ▼
+#                          ┌──────────────────────────┐
+#                          │   splunk (HEC :8088)     │
+#                          └──────────────────────────┘
+#
+# In prod, "nginx-alb" is replaced by AWS ALB + ACM.  Backend wire
+# protocol (HTTP) and exporter behaviour are identical.
+#
+# Quick start:
+#   cp .env.example .env
+#   docker compose up -d
+#   docker compose logs -f splunk | grep -m1 "Ansible playbook complete"
+#   open http://localhost:8000             # admin / SPLUNK_PASSWORD
+#
+#   # HTTPS endpoint TEE-Crafter posts to (via nginx-alb, mirrors prod):
+#   #   https://localhost:8443/services/collector
+#   # See siem-sandbox/configs/splunk-local.json (verify_ssl=0 because the
+#   # cert is the self-signed dev cert nginx-alb generates on first boot).
+services:
+  splunk:
+    image: splunk/splunk:${SPLUNK_IMAGE_TAG:-latest}
+    # Splunk only publishes linux/amd64 images.  On Apple Silicon / arm64
+    # hosts this runs under Rosetta (Docker Desktop) or qemu emulation —
+    # slower first boot but otherwise transparent.  In Fargate you'd set
+    # the task ``runtime_platform.cpu_architecture = X86_64``.
+    platform: linux/amd64
+    container_name: tee-crafter-splunk
+    hostname: splunk-sandbox
+    restart: unless-stopped
+    ports:
+      # Splunk Web UI (for *you* — verify events landed, run searches).
+      - "8000:8000"
+      # Direct HEC port — only published so you can curl-probe the
+      # backend during debugging.  Production clients should always go
+      # through nginx-alb on :8443 (or in prod, the ALB).
+      - "8088:8088"
+      # Management / REST API (for the smoke-test script's search queries).
+      - "8089:8089"
+    environment:
+      # Two-flag dance to accept the Splunk General Terms (post-2024).
+      # `SPLUNK_GENERAL_TERMS` accepts the SGT; `SPLUNK_START_ARGS` accepts
+      # the embedded developer license.  Both required.
+      SPLUNK_GENERAL_TERMS: "--accept-sgt-current-at-splunk-com"
+      SPLUNK_START_ARGS: "--accept-license"
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:?set SPLUNK_PASSWORD in .env}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:?set SPLUNK_HEC_TOKEN in .env}
+      # HEC inside the sandbox runs plain HTTP — exactly like the
+      # production "ALB terminates TLS, forwards HTTP to ECS task" shape.
+      # nginx-alb (this stack) plays the role of the ALB.
+      SPLUNK_HEC_SSL: "false"
+      SPLUNK_INDEX_TEE_CRAFTER: "tee_crafter"
+    volumes:
+      - splunk_var:/opt/splunk/var
+      - splunk_etc:/opt/splunk/etc
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSk https://localhost:8089/services/server/info -u admin:${SPLUNK_PASSWORD} >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+  # nginx-alb: production-ALB stand-in.  Terminates HTTPS with a
+  # self-signed dev cert on :8443 (Tier 1) and accepts plain HTTP on
+  # :8080 (Tier 2, used by ngrok agent).  Both listeners reverse-proxy
+  # to the Splunk HEC on plain HTTP — mirroring the wire shape of
+  # "AWS ALB + ACM cert -> HTTP -> ECS task running Splunk".
+  nginx-alb:
+    image: nginx:1.27-alpine
+    container_name: tee-crafter-nginx-alb
+    restart: unless-stopped
+    depends_on:
+      splunk:
+        condition: service_healthy
+    ports:
+      - "8443:8443"   # HTTPS — TEE-Crafter clients (Tier 1) point here
+      - "8080:8080"   # HTTP  — published only for debugging / curl probes
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/entrypoint.sh:/entrypoint.sh:ro
+      - nginx_certs:/certs
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    healthcheck:
+      # 127.0.0.1 explicitly: busybox wget would otherwise resolve
+      # `localhost` to ::1 (IPv6) first, but nginx in this stack only
+      # listens on IPv4.
+      test: ["CMD-SHELL", "wget --no-check-certificate -q -O- https://127.0.0.1:8443/healthz | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Opt-in: bring up with `docker compose --profile ngrok up -d`.
+  # Publishes a public HTTPS URL (Let's-Encrypt cert at ngrok's edge)
+  # that forwards plain HTTP to nginx-alb:8080 — so a TEE running in
+  # AWS / GCP / Azure can hit your local Splunk for a real end-to-end
+  # attestation test.  Requires a free ngrok account; set
+  # NGROK_AUTHTOKEN in .env first.
+  #
+  # The chain is:  TEE -> ngrok-edge (HTTPS, real cert) ->
+  #                 ngrok-agent -> nginx-alb :8080 (HTTP) -> splunk :8088.
+  # Mirrors prod:  TEE -> ALB+ACM   (HTTPS, real cert) ->
+  #                 ALB target group -> ECS task splunk :8088.
+  #
+  # Current public URL: `docker logs tee-crafter-ngrok`, or read
+  # programmatically from http://localhost:4040/api/tunnels (see
+  # `siem-sandbox/scripts/make_remote_splunk_siem_config.py`).
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: tee-crafter-ngrok
+    profiles: ["ngrok"]
+    restart: unless-stopped
+    depends_on:
+      nginx-alb:
+        condition: service_healthy
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      NGROK_RESERVED_DOMAIN: ${NGROK_RESERVED_DOMAIN:-}
+    # Forward a public HTTPS URL to nginx-alb's HTTP listener (the dev
+    # stand-in for ALB+ACM forwarding HTTP to an ECS task running splunk).
+    #
+    # When NGROK_RESERVED_DOMAIN is set (e.g.
+    # ``loyal-gertrud-unocular.ngrok-free.dev``), the agent pins that
+    # stable subdomain — survives container restarts.  When empty, ngrok
+    # hands out a fresh random ``*.ngrok-free.app`` URL each time.
+    # Implemented via ``sh -c`` so the ``--url`` flag is conditionally
+    # omitted (you can't pass an empty positional flag to ngrok).
+    volumes:
+      # ngrok Agent v3 dropped `--web-addr`; bind API via `agent.web_addr` in
+      # config.  Without this the agent listens on 127.0.0.1:4040 inside the
+      # container and the published port below refuses connections, so
+      # scripts/make_remote_splunk_siem_config.py cannot discover the URL.
+      - ./ngrok/ngrok.yml:/etc/ngrok/ngrok.yml:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        exec ngrok --config=/etc/ngrok/ngrok.yml http nginx-alb:8080
+        --log=stdout
+        ${NGROK_RESERVED_DOMAIN:+--url=$$NGROK_RESERVED_DOMAIN}
+    ports:
+      - "4040:4040"
+
+volumes:
+  splunk_var:
+    driver: local
+  splunk_etc:
+    driver: local
+  # Cert + key for the nginx-alb HTTPS listener.  Generated on first
+  # boot by nginx/entrypoint.sh; wipe with `docker compose down -v` if
+  # you want a fresh cert.
+  nginx_certs:
+    driver: local

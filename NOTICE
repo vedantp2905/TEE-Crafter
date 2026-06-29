@@ -1,0 +1,46 @@
+TEE-Crafter
+Copyright 2026 Vedant Pungliya
+
+This product includes software developed by Vedant Pungliya.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+================================================================================
+Third-party material redistributed with this project
+================================================================================
+
+1. Vendor attestation trust anchors
+   Location: apps/cli/src/tee_crafter/certs/
+
+   The following X.509 certificates are PUBLIC root and intermediate
+   certification authority certificates published by their respective vendors.
+   They are redistributed unmodified so that attestation verification has a
+   pinned trust anchor available offline. They remain the property of their
+   respective issuers and are NOT covered by this project's Apache-2.0 licence.
+
+     amd-ark-milan.pem      AMD SEV ARK / VLEK (Milan)   -- Advanced Micro Devices, Inc.
+     amd-ark-genoa.pem      AMD SEV ARK / SEV (Genoa)    -- Advanced Micro Devices, Inc.
+     intel-sgx-dcap-root.pem   Intel SGX Root CA (DCAP)  -- Intel Corporation
+     nitro-root.pem         AWS Nitro Enclaves root CA   -- Amazon Web Services, Inc.
+     nvidia-nras-intermediate.pem   NVIDIA NRAS attestation CA   -- NVIDIA Corporation
+
+   No claim of ownership is made over these certificates. They are included
+   solely as trust anchors for verifying vendor-issued attestation evidence.
+
+2. External tools invoked at runtime (not bundled, not linked)
+
+   TEE-Crafter shells out to the following tools. They are not redistributed
+   with this project and are not linked against it; their licences apply to
+   the copies you install yourself.
+
+     Terraform      Business Source License 1.1  -- HashiCorp
+     Gramine        LGPL-3.0                     -- Gramine contributors
+     Docker CLI     Apache-2.0                   -- Docker, Inc.
+     AWS CLI        Apache-2.0                   -- Amazon Web Services, Inc.
+     Azure CLI      MIT                          -- Microsoft Corporation
+     gcloud CLI     Apache-2.0                   -- Google LLC
+
+3. Python dependencies
+
+   Declared in apps/cli/pyproject.toml and installed from PyPI. Each retains
+   its own licence; none are copyleft. Notable: `pathspec` is MPL-2.0 and is
+   used unmodified, which imposes no source-disclosure obligation here.

@@ -1,0 +1,110 @@
+# Local syslog-ng for TEE-Crafter SIEM development.
+#
+# Topology (mirrors the production intra-VPC syslog forwarder shape):
+#
+#                          ┌──────────────────────────────────────┐
+#                          │            syslog-ng                 │
+#   TEE-Crafter      ─UDP─▶│  :514/udp   RFC 5424 (syslog-protocol)│
+#   SyslogCefExporter ─TCP▶│  :601/tcp   RFC 5424 (syslog-protocol)│
+#                          │                                      │
+#                          │  -> /var/log/tee-crafter/teelog.log   │
+#                          └──────────────────────────────────────┘
+#
+# Why two ports?  syslog-cef in the wild is split:
+#   - 514/udp:  most legacy collectors and forwarder agents
+#   - 601/tcp:  RFC 6587 "octet-counting" or LF-framed reliable delivery
+#               (this is what rsyslog/fluentd forwarders prefer for prod)
+# We expose both so the smoke test can prove the exporter wire format
+# parses cleanly under each transport against a real, RFC-compliant
+# receiver — not a hand-rolled test stub.
+#
+# In production this stack is replaced by the customer's existing
+# intra-VPC syslog forwarder (rsyslog cluster, Fluent Bit DaemonSet,
+# Sentinel Linux agent, ArcSight SmartConnector, …).  Backend wire
+# protocol (RFC 5424) and exporter behaviour are identical.
+#
+# Quick start:
+#   cp .env.example .env       # (optional — defaults work)
+#   docker compose up -d
+#   docker compose logs -f syslog-ng | grep -m1 "syslog-ng starting up"
+#   # In a separate shell, from the repo root:
+#   python siem-sandbox/scripts/smoke_syslog.py
+#
+# Tier 2 — cloud TEE -> laptop syslog via ngrok (TCP):
+#   echo NGROK_AUTHTOKEN=... >> .env
+#   docker compose --profile ngrok up -d
+#   python ../scripts/make_remote_syslog_siem_config.py
+#   # -> siem-sandbox/configs/syslog-via-ngrok.json (host + port + egress_ports)
+#
+# Splunk uses `ngrok http` (HTTPS).  Syslog is raw TCP, so we use
+# `ngrok tcp` to the syslog-ng RFC-5424 TCP listener (:601 inside the
+# network).  Agent API is on :4041 so it does not collide with Splunk's
+# ngrok on :4040.  Paid ngrok: set NGROK_TCP_URL for a reserved `--url`.
+services:
+  syslog-ng:
+    image: balabit/syslog-ng:${SYSLOG_NG_IMAGE_TAG:-4.8.3}
+    # syslog-ng publishes multi-arch images, so this runs natively on
+    # both x86_64 and Apple Silicon hosts.
+    container_name: tee-crafter-syslog-ng
+    hostname: syslog-ng-sandbox
+    restart: unless-stopped
+    # We bind 514 to a non-privileged host port (5514) so docker doesn't
+    # collide with the host's own syslogd (mac & linux).  The container
+    # still listens on :514 internally — only the host-side port differs.
+    ports:
+      - "5514:514/udp"
+      - "6601:601/tcp"
+    volumes:
+      - ./syslog-ng/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
+      - syslog_log:/var/log/tee-crafter
+    # `-edv` = foreground (e), enable stats (d), verbose startup (v).
+    # The official image's default entrypoint already runs syslog-ng;
+    # we override only to make the verbose banner show up in
+    # `docker compose logs` so the smoke test can wait for readiness.
+    command: ["-edv", "--no-caps"]
+    healthcheck:
+      # syslog-ng has no built-in HTTP endpoint; the simplest reliable
+      # liveness probe is to check the unix domain control socket that
+      # syslog-ng-ctl uses.
+      test: ["CMD-SHELL", "syslog-ng-ctl stats >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # Opt-in: `docker compose --profile ngrok up -d`.
+  # Publishes a public tcp://host:port that forwards into syslog-ng:601
+  # (RFC 5424 TCP).  A TEE in AWS/GCP/Azure connects with protocol=tcp
+  # to that address — same framing as intra-VPC prod, one extra hop.
+  #
+  # Requires NGROK_AUTHTOKEN in `.env` (same free account as Splunk tier).
+  # Paid ngrok: reserve a TCP address in the dashboard, then set
+  # NGROK_TCP_URL=1.tcp.ngrok.io:27210 so the agent pins `--url=...`.
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: tee-crafter-ngrok-syslog
+    profiles: ["ngrok"]
+    restart: unless-stopped
+    depends_on:
+      syslog-ng:
+        condition: service_healthy
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      NGROK_TCP_URL: ${NGROK_TCP_URL:-}
+    volumes:
+      # ngrok Agent v3 dropped `--web-addr`; bind API via `agent.web_addr` in config.
+      - ./ngrok/ngrok.yml:/etc/ngrok/ngrok.yml:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        exec ngrok --config=/etc/ngrok/ngrok.yml tcp
+        $${NGROK_TCP_URL:+--url=$$NGROK_TCP_URL} syslog-ng:601 --log=stdout
+    ports:
+      - "4041:4041"
+
+volumes:
+  # Persisted across `docker compose restart` so the smoke test can
+  # tail the log file even if the container bounces.  Wipe with
+  # `docker compose down -v` if you want a clean run.
+  syslog_log:
+    driver: local

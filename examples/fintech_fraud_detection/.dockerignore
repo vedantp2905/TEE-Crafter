@@ -1,0 +1,13 @@
+__pycache__
+*.py[cod]
+*.egg-info
+.git
+.tee_crafter_scan
+*.md
+# Never bake input data into the image.  It is supplied at deploy time via
+# --input-dir and bind-mounted read-only at /input.  Note that --input-dir is
+# NOT sealed: the CLI ships a plain tar.gz and the host extracts it in the
+# clear.  For confidential input use `tee-crafter seal-input` — see
+# ../README.md#what---input-dir-actually-does--read-this-before-sending-real-data
+input/
+output

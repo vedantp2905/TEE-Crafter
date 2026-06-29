@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e "apps/cli[dev]"
+      - name: Run tests
+        # No cloud credentials are available here, so anything that reaches a
+        # provider must be marked `integration` and is deselected.
+        run: pytest apps/cli/tests -m "not integration" -o addopts= -q
+
+  fresh-clone:
+    name: Fresh-clone integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Export the tracked tree only
+        # Catches the entire class of bug where a .gitignore rule silently
+        # excludes a file the code requires.
+        run: |
+          mkdir -p /tmp/fresh
+          git archive HEAD | tar -x -C /tmp/fresh
+      - name: Every path the code opens must be tracked
+        run: python3 .github/scripts/check_tracked_paths.py /tmp/fresh
+      - name: Install and import from the exported tree
+        run: |
+          cd /tmp/fresh
+          pip install -e "apps/cli[dev]"
+          python -c "
+          from tee_crafter.cli.loaders import load_nitro_root_ca, load_sgx_root_ca
+          from tee_crafter.core.builder.platforms import _load_amd_root_ca
+          assert 'BEGIN CERTIFICATE' in load_nitro_root_ca()
+          assert 'BEGIN CERTIFICATE' in load_sgx_root_ca()
+          assert 'BEGIN CERTIFICATE' in _load_amd_root_ca('milan')
+          print('trust anchors present in exported tree')
+          "
+
+  wheel:
+    name: Wheel ships its data files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
+        run: pip wheel --no-deps -w /tmp/wh apps/cli
+      - name: Assert trust anchors and templates are inside the wheel
+        # An installed wheel without certs/*.pem has no root of trust, and the
+        # failure is invisible from a source checkout.
+        run: |
+          python3 - <<'PY'
+          import glob, zipfile, sys
+          whl = glob.glob('/tmp/wh/tee_crafter*.whl')[0]
+          names = zipfile.ZipFile(whl).namelist()
+          required = [
+              'tee_crafter/certs/nitro-root.pem',
+              'tee_crafter/certs/intel-sgx-dcap-root.pem',
+              'tee_crafter/certs/amd-ark-milan.pem',
+              'tee_crafter/certs/amd-ark-genoa.pem',
+              'tee_crafter/certs/nvidia-nras-intermediate.pem',
+              'tee_crafter/templates/common/seccomp-container.json',
+          ]
+          # Provider lockfiles: a glob `*` does not match a leading dot, so
+          # these need their own package-data entry and are easy to lose.
+          # Without them every install resolves providers unpinned.
+          required += [
+              f'tee_crafter/templates/{p}/.terraform.lock.hcl'
+              for p in ('nitro', 'sgx', 'snp/aws', 'snp/azure', 'snp/gcp',
+                        'tdx/azure', 'tdx/gcp', 'gpu_cc/aws', 'gpu_cc/azure',
+                        'gpu_cc/gcp')
+          ]
+          missing = [r for r in required if r not in names]
+          if missing:
+              sys.exit('MISSING FROM WHEEL:\n  ' + '\n  '.join(missing))
+          print(f'wheel OK ({len(names)} entries)')
+          PY
+
+  terraform:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.5"
+      - name: Validate every platform template
+        # Needs no cloud credentials.  Templates carry __PLACEHOLDER__ tokens,
+        # so each is rendered with inert values before validation.
+        run: python3 .github/scripts/validate_terraform.py
+      - name: Every platform ships a provider lockfile with checksums
+        # Offline check. Regenerating locks downloads every provider for every
+        # target platform (multiple GB), so that stays a manual step; this
+        # only asserts the committed result is present and authenticated.
+        run: python3 .github/scripts/generate_provider_locks.py --check
+
+      - name: No pinned trust anchor is near expiry
+        # Offline: reads certs/*.pem only, no network, no credentials.
+        #
+        # This is an early-warning gate, not a correctness check. Five of the
+        # six anchors run to 2045+; nvidia-nras-intermediate.pem expires
+        # 2029-12-08 and is pinned by exact DER, so its rotation stops GPU
+        # attestation on every ALREADY DEPLOYED client at once. A year of
+        # notice is not generous for a change that needs a coordinated rebuild
+        # and redeploy of every GPU-CC deployment.
+        #
+        # Detecting the rotation itself needs the live NVIDIA key set
+        # (`--live`), which is deliberately NOT run here: a third-party
+        # endpoint in the push path makes this job fail for reasons unrelated
+        # to the commit. Run `--live` on a schedule instead — see
+        # docs/trust_anchor_rotation.md.
+        run: python3 .github/scripts/check_pinned_anchors.py --warn-days 365
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Pinned. An unpinned `pip install ruff` picks up new default rules on
+      # every release, which turns a green job red on an unrelated push.
+      - run: pip install 'ruff==0.16.3'
+      # Ruleset lives in apps/cli/pyproject.toml under [tool.ruff.lint].
+      - run: ruff check apps/cli/src apps/cli/tests

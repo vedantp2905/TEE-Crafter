@@ -1,0 +1,34 @@
+# Accepted findings for this example image.
+#
+# TEE-Crafter's vulnerability gate blocks on findings that have an upstream fix
+# (see apps/cli/src/tee_crafter/core/security/vuln_scan.py).  The two below are
+# reported as fixable but cannot be fixed in this image, for reasons that are
+# structural rather than a matter of bumping a version.  Each was traced to
+# ground before being listed here; do not add entries without doing the same.
+#
+# Both come from `site-packages/pip/_vendor/vendor.txt`, the pinned manifest of
+# pip's *own* vendored tree — not from this app's dependency set:
+#
+#   $ grep -iE 'msgpack|setuptools' .../pip/_vendor/vendor.txt
+#   msgpack==1.1.2
+#   setuptools==70.3.0
+#
+# Neither is an installed package.  `pip list` in the built image shows
+# setuptools 84.0.0 and no msgpack at all, so upgrading cannot clear them.
+#
+# There is no upstream fix to wait for: pip 26.2.1 — the current release as of
+# 2026-08-21 — still pins exactly these two versions.
+#
+# And pip cannot be removed from this image.  TEE-Crafter's generated Dockerfile
+# does `FROM tee-crafter-user-app:<tag>` followed by `RUN python -m pip install`
+# to layer the TEE runtime on top, so stripping pip here breaks every deploy of
+# this example.  (That was tried first; this file is the result.)
+#
+# Re-check on a pip release that refreshes its vendored msgpack/setuptools, and
+# delete the corresponding line when it does.
+
+# setuptools: path traversal in PackageIndex. pip-vendored manifest entry only.
+CVE-2025-47273
+
+# msgpack: OOB read on Unpacker reuse. pip-vendored manifest entry only.
+GHSA-6v7p-g79w-8964

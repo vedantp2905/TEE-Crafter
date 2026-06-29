@@ -1,0 +1,16 @@
+{
+  "provider": "splunk-hec",
+  "interval_seconds": 30,
+  "sign_events": true,
+  "fail_open": true,
+  "endpoint": "https://localhost:8443/services/collector",
+  "token":    "11111111-1111-1111-1111-111111111111",
+  "index":    "tee_crafter",
+  "sourcetype": "tee_crafter:attestation",
+  "source":   "tee-crafter",
+  "egress_mode": "none",
+  "extra": {
+    "verify_ssl": "0",
+    "allow_insecure": "1"
+  }
+}
