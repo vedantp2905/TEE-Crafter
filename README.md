@@ -300,7 +300,7 @@ on code. [docs/pending.md](docs/pending.md) says what would close them, and is
 also the complete account of the narrower gaps on the eight platforms that *have*
 run — which branch, which piece of data, which negative case.
 
-Beyond hardware: 4,458 tests, offline verification against the real vendor CA
+Beyond hardware: 4,944 tests, offline verification against the real vendor CA
 certificates, a live fetch against Intel's production Provisioning Certification
 Service, `terraform validate` across all ten platform templates, and a real Linux
 kernel for the seccomp filter.
