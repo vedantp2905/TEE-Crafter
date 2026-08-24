@@ -18,6 +18,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # A handful of tests drive `terraform console` to prove a `count =`
+      # conditional really evaluates.  Without the binary they skip, and the
+      # check silently stops running -- so install it here rather than let the
+      # coverage disappear.
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.5"
+          terraform_wrapper: false
       - name: Install
         run: pip install -e "apps/cli[dev]"
       - name: Run tests

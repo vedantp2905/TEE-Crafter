@@ -25,6 +25,7 @@ the count conditional really does gate on emptiness.
 
 import json
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -148,6 +149,15 @@ class TestTemplatesConsumeTheSameName:
         assert "vm_byok_decrypt" in depends
 
 
+#: These cases drive the real `terraform console`, so they need the binary.
+#: The CI unit-test job installs no Terraform, which surfaced as six
+#: FileNotFoundError failures rather than skips.  Same guard as
+#: test_s3_gateway_endpoint_policy.py.
+HAVE_TERRAFORM = shutil.which("terraform") is not None
+
+
+@pytest.mark.skipif(not HAVE_TERRAFORM,
+                    reason="terraform binary not on PATH")
 class TestCountConditionalEvaluates:
     """Evaluate the real HCL rather than asserting about its text.
 
