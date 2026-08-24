@@ -35,7 +35,7 @@ jobs:
       # coverage disappear.
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.5"
+          terraform_version: "1.15.9"
           terraform_wrapper: false
       - name: Install
         run: pip install -e "apps/cli[dev]"
@@ -122,9 +122,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Must match ARG TF_VERSION in apps/cli/Dockerfile. This job validates
+      # the ten templates, and the CLI's own image is what plans and applies
+      # them -- validating on a different Terraform is the drift the Dockerfile
+      # comment already warns about. It was pinned six minor versions behind.
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.5"
+          terraform_version: "1.15.9"
       - name: Validate every platform template
         # Needs no cloud credentials.  Templates carry __PLACEHOLDER__ tokens,
         # so each is rendered with inert values before validation.
