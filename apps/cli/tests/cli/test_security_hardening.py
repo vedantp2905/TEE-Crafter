@@ -392,8 +392,17 @@ class TestHandlerSandbox(unittest.TestCase):
             sys.path.pop(0)
         def handler(data):
             return {"got": data}
-        wrapped = hs.sandbox_wrap(handler)
-        self.assertEqual(wrapped({"x": 1}), {"got": {"x": 1}})
+        # ``sandbox_wrap`` lazily calls ``_install_once``, which on Linux loads
+        # the real filter into *this* process -- and that filter denies process
+        # creation, which is the whole point of it.  A seccomp filter cannot be
+        # removed, so every later test in the session that shelled out died with
+        # EPERM at exec: 33 failures and 58 errors on Linux CI, invisible on
+        # macOS where seccomp does not exist.  This test is about the wrapper
+        # forwarding to the handler, so the install is stubbed; the filter
+        # itself is exercised in a subprocess elsewhere in this file.
+        with mock.patch.object(hs, "_install_once"):
+            wrapped = hs.sandbox_wrap(handler)
+            self.assertEqual(wrapped({"x": 1}), {"got": {"x": 1}})
 
     def test_disable_env_returns_unwrapped_fn(self):
         sys.path.insert(0, os.path.join(SRC, "tee_crafter", "templates", "common"))
