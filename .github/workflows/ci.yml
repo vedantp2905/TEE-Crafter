@@ -1,10 +1,21 @@
 name: CI
 
 on:
+  # A merge into main arrives here as a push, so this one trigger covers both
+  # "someone merged a PR" and "someone pushed straight to main".
   push:
     branches: [main]
+  # Scoped to main so a PR between two topic branches does not burn five jobs.
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+# One run per branch. Pushing three times to a PR branch used to leave three
+# full matrices running; now the older two are cancelled. Runs on main are
+# never cancelled -- each one is the record for a distinct merged commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
