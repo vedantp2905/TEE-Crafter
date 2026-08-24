@@ -46,11 +46,14 @@ jobs:
           cd /tmp/fresh
           pip install -e "apps/cli[dev]"
           python -c "
-          from tee_crafter.cli.loaders import load_nitro_root_ca, load_sgx_root_ca
-          from tee_crafter.core.builder.platforms import _load_amd_root_ca
+          from tee_crafter.cli.loaders import load_nitro_root_ca
+          from tee_crafter.core.builder.platforms import (
+              _load_amd_root_ca, _load_intel_root_ca, _load_nvidia_root_ca)
           assert 'BEGIN CERTIFICATE' in load_nitro_root_ca()
-          assert 'BEGIN CERTIFICATE' in load_sgx_root_ca()
+          assert 'BEGIN CERTIFICATE' in _load_intel_root_ca()
           assert 'BEGIN CERTIFICATE' in _load_amd_root_ca('milan')
+          assert 'BEGIN CERTIFICATE' in _load_amd_root_ca('genoa')
+          assert 'BEGIN CERTIFICATE' in _load_nvidia_root_ca()
           print('trust anchors present in exported tree')
           "
 
@@ -112,6 +115,14 @@ jobs:
         # target platform (multiple GB), so that stays a manual step; this
         # only asserts the committed result is present and authenticated.
         run: python3 .github/scripts/generate_provider_locks.py --check
+
+      # This job sets up Terraform and nothing else, so the anchor check below
+      # ran against whatever cryptography the runner image happened to ship.
+      # `not_valid_after_utc` needs >=42 and the step died with AttributeError.
+      # The script now tolerates either API; this makes the dependency explicit
+      # rather than inherited.
+      - name: Install the cert parser the anchor check needs
+        run: pip install 'cryptography>=42'
 
       - name: No pinned trust anchor is near expiry
         # Offline: reads certs/*.pem only, no network, no credentials.

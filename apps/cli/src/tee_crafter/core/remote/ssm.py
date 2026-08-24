@@ -2,7 +2,6 @@
 import time
 import json
 import logging
-import os
 import socket
 import subprocess
 from typing import Tuple, Optional

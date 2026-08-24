@@ -67,6 +67,22 @@ def _load_all(path: Path) -> list[x509.Certificate]:
     return x509.load_pem_x509_certificates(path.read_bytes())
 
 
+def _not_after(cert):
+    """Expiry as a timezone-aware UTC datetime, on any cryptography version.
+
+    ``not_valid_after_utc`` arrived in cryptography 42; the older
+    ``not_valid_after`` returns a naive datetime that is already UTC.  Both are
+    supported because the Terraform CI job installs no Python dependencies --
+    it only sets up Terraform -- so it runs against whatever the runner image
+    happens to ship, and this check died with AttributeError there while
+    passing on every developer machine.
+    """
+    try:
+        return getattr(cert, "not_valid_after_utc")
+    except AttributeError:  # cryptography < 42
+        return cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
+
+
 def check_local(warn_days: int, now: datetime.datetime) -> tuple[int, list[str]]:
     """Report expiry for every pinned anchor.  Returns (problems, lines)."""
     problems = 0
@@ -79,7 +95,7 @@ def check_local(warn_days: int, now: datetime.datetime) -> tuple[int, list[str]]
             problems += 1
             continue
         for cert in certs:
-            days = (cert.not_valid_after_utc - now).days
+            days = (_not_after(cert) - now).days
             cn = ""
             try:
                 cn = cert.subject.rfc4514_string()
@@ -93,7 +109,7 @@ def check_local(warn_days: int, now: datetime.datetime) -> tuple[int, list[str]]
                 flag = f"  *** EXPIRES IN {days}d ***"
                 problems += 1
             lines.append(
-                f"  {path.name:32} {cert.not_valid_after_utc.date()}  "
+                f"  {path.name:32} {_not_after(cert).date()}  "
                 f"({days:>6}d)  {cn[:58]}{flag}")
     return problems, lines
 
@@ -147,8 +163,8 @@ def check_live_nras(now: datetime.datetime) -> tuple[int, list[str]]:
             continue
         digest = _der_sha256(intermediate)
         seen[digest] = seen.get(digest, 0) + 1
-        if leaf_soonest is None or leaf.not_valid_after_utc < leaf_soonest:
-            leaf_soonest = leaf.not_valid_after_utc
+        if leaf_soonest is None or _not_after(leaf) < leaf_soonest:
+            leaf_soonest = _not_after(leaf)
 
     if not seen:
         return 1, ["  no usable x5c chain in the NRAS JWKS"]

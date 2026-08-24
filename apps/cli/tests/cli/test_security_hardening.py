@@ -357,11 +357,27 @@ class TestHandlerSandbox(unittest.TestCase):
         hs._HAVE_SECCOMP = False
         hs._INSTALL_ATTEMPTED = False
         original = hs._detect_parent_seccomp_filter
+        original_probe = hs._probe_seccomp_load_permitted
         hs._detect_parent_seccomp_filter = lambda: True
+        # The probe has to be stubbed too, and not only for determinism.  Left
+        # live it returns False on macOS (no seccomp) but True on Linux, so the
+        # installer went on to load a filter *into the pytest process itself* --
+        # and a seccomp filter cannot be removed.  Every later test that spawned
+        # a subprocess then died with EPERM at exec: 34 failures and 58 errors on
+        # Linux CI, none of them reproducible on a developer's Mac.  The scenario
+        # under test is a parent filter that would SIGSYS under systemd, i.e. one
+        # we must not load under, so False is also the correct value here.
+        hs._probe_seccomp_load_permitted = lambda: False
         try:
-            ok = hs._try_install_seccomp_once()
+            # FORCE_SECCOMP short-circuits the probe entirely, so a stray value
+            # in the environment would put the real load back in play.
+            with mock.patch.dict(
+                    os.environ,
+                    {"TEE_CRAFTER_HANDLER_SANDBOX_FORCE_SECCOMP": "0"}):
+                ok = hs._try_install_seccomp_once()
         finally:
             hs._detect_parent_seccomp_filter = original
+            hs._probe_seccomp_load_permitted = original_probe
         self.assertTrue(ok)
         self.assertTrue(hs._PARENT_SECCOMP)
         self.assertFalse(hs._HAVE_SECCOMP)
