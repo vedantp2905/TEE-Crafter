@@ -18,15 +18,15 @@ dependencies = [
     "pyflakes==3.4.0",
     "boto3==1.42.54",
     "google-cloud-kms==3.16.0",
-    "cbor2==5.9.0",
+    "cbor2==6.1.4",
     "cryptography==50.0.0",
     "PyJWT[crypto]==2.13.0",
-    "requests==2.33.0",
+    "requests==2.34.2",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==9.0.3",
+    "pytest==9.1.1",
     "pytest-mock==3.15.1",
     "ruff==0.16.3",
     # Runtime dependency of the in-TEE code, not of the CLI: it parses the CMS
