@@ -28,6 +28,13 @@ __pycache__/
 .cursor
 .claude/
 docs/report.tex
+# pdflatex leaves these beside the source. They are not ignored by any rule
+# above, so without this a `git add -A` after a rebuild commits four files of
+# build state.
+docs/report.aux
+docs/report.log
+docs/report.out
+docs/report.toc
 # Internal audit tracker and the 21 raw workstream reports behind it (~19,800
 # lines). Working notes, not documentation: they contain findings later
 # disproved, severities later revised, and pre-fix snapshots of code that has
