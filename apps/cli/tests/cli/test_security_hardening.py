@@ -965,10 +965,14 @@ class TestSeccompNestingDecision(unittest.TestCase):
 
     def test_parent_filter_that_permits_seccomp_does_not_block_install(self):
         hs = self._module()
+        # The real load is inlined via ctypes, so CDLL is the only seam that
+        # stops it putting an unremovable filter on the pytest process.
         with mock.patch.object(hs, "_detect_parent_seccomp_filter",
                                return_value=True), \
              mock.patch.object(hs, "_probe_seccomp_load_permitted",
                                return_value=True) as probe, \
+             mock.patch("ctypes.CDLL",
+                        side_effect=OSError("no libseccomp in tests")), \
              mock.patch.object(hs, "_load_empty_allow_filter",
                                return_value=True):
             hs._try_install_seccomp_once()
@@ -997,6 +1001,8 @@ class TestSeccompNestingDecision(unittest.TestCase):
              mock.patch.dict(
                  os.environ,
                  {"TEE_CRAFTER_HANDLER_SANDBOX_FORCE_SECCOMP": "1"}), \
+             mock.patch("ctypes.CDLL",
+                        side_effect=OSError("no libseccomp in tests")), \
              mock.patch.object(hs, "_load_empty_allow_filter",
                                return_value=True):
             hs._try_install_seccomp_once()
