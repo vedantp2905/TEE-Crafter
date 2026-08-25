@@ -124,12 +124,15 @@ tee-crafter seal-input \
   --build-id <sha256-of-build-dir>
 ```
 
-The in-TEE batch runner unwraps it when `BATCH_SEALED_INPUT` points at the
-bundle (`apps/cli/src/tee_crafter/templates/common/batch_runner.py::_maybe_unseal_input`,
-lines 211–239). Note that today this is a **manual** path: `--input-dir` does
-not produce a sealed bundle, and nothing in the deploy flow sets
-`BATCH_SEALED_INPUT` or writes `seal_pub.pem` for you — so you have to stage
-both yourself.
+**Nothing in this tree unwraps that bundle today.** This section previously
+described an in-TEE runner at
+`templates/common/batch_runner.py::_maybe_unseal_input` selected by a
+`BATCH_SEALED_INPUT` variable; neither the module nor the variable exists here.
+`--input-dir` does not produce a sealed bundle, and nothing in the deploy flow
+writes the `seal_pub.pem` you would seal against. The sealing and unsealing
+primitives themselves work offline (`core/sealing/`), but the batch half is
+missing — see the warning in
+[docs/cli_reference.md](../docs/cli_reference.md#sealed-input-bundles).
 
 Two of the four examples exclude `input/` via `.dockerignore`
 (`fintech_fraud_detection`, `gpu_confidential_inference`). `hello_http` has a

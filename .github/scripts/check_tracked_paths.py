@@ -30,6 +30,12 @@ REQUIRED_RELATIVE = [
     "apps/cli/src/tee_crafter/certs/intel-sgx-dcap-root.pem",
     "apps/cli/src/tee_crafter/certs/amd-ark-milan.pem",
     "apps/cli/src/tee_crafter/certs/amd-ark-genoa.pem",
+    # Loaded by platforms._load_amd_ask_ca for the VCEK-signing chain.  Omitted
+    # from this list until 2026-08 even though it is opened by a literal path,
+    # which is exactly the gap this script exists to close: a stray .gitignore
+    # rule would have silently broken SEV-SNP verification on Milan hosts that
+    # return a VCEK (GCP) while every other platform kept passing.
+    "apps/cli/src/tee_crafter/certs/amd-ask-milan.pem",
     "apps/cli/src/tee_crafter/certs/nvidia-nras-intermediate.pem",
     "apps/cli/src/tee_crafter/templates/common/seccomp-container.json",
     "apps/cli/src/tee_crafter/templates/common/apparmor-container",

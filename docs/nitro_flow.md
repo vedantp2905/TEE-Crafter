@@ -458,10 +458,11 @@ bearer tokens cannot leak via the journal.
 - [x] **Zero-trust host (persistent mode)**: In `--persistent` mode the host proxy only forwards ECIES-encrypted payloads and injects IAM credentials; it never sees plaintext data or decrypted keys.
 - [ ] **Zero-trust host does NOT hold in `--batch` mode.** Batch is a different execution path and the host sees plaintext at both ends:
  - `--input-dir` is uploaded as a plain `tar.gz` and extracted in the clear to `/var/lib/tee_crafter/input` on the parent instance.
- - Container batch on `nitro-aws` runs the user image on the parent EC2 instance via Docker, **not** inside the enclave — `docker diff` capture is not available in a Nitro Enclave (`cli/commands/deploy/batch_dispatch.py`, lines 298–309).
  - For the enclave-side batch path, the enclave streams output over vsock unencrypted and the host collector writes it world-readable (`0644`).
 
- Use `--persistent` on `nitro-aws`, or `snp-aws` for batch, if the host must not see plaintext. `docs/security.md` §16.6 covers the same ground.
+ **Container batch is not available on `nitro-aws` at all.** A Nitro Enclave boots a signed EIF rather than an operator-supplied OCI image, so `nitro-aws` is absent from `resources.CONTAINER_PLATFORMS` and `--batch --tee-platform nitro-aws` is rejected in pre-flight before any Terraform runs (`cli/preflight.py::_check_container_batch_supported`, line 164). Earlier revisions of this document described it as running the user image on the parent EC2 instance; that path was removed, and the guard is regression-tested by `tests/cli/test_batch_mode.py::test_nitro_batch_rejected_before_any_provisioning`.
+
+ Use `--persistent` on `nitro-aws`, or a CVM platform (`snp-*` / `tdx-*`) for batch. `docs/security.md` §16.6 covers the same ground.
 - [x] **End-to-end ECIES**: Client encrypts with an ECDH key authenticated by attestation; enclave holds the private key and performs AES-256-GCM (with AAD) decrypt/encrypt entirely inside the enclave.
 - [x] **Network isolation**: No public IP, zero ingress security groups; all control paths over SSM and AWS service traffic via VPC endpoints (KMS, S3, SSM, SSMMessages, EC2Messages).
 - [x] **IMDS hardening**: IMDSv2 enforced on the host instance; enclave has no direct IMDS or network access.

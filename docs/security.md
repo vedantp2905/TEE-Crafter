@@ -2167,27 +2167,35 @@ FedRAMP-style logs-or-no-service posture. Verified live on `snp-aws`
 `last_export_status=fail` and the deploy itself exited non-zero rather
 than reporting success for a service that would answer nothing.
 
-> **`nitro-aws` and `sgx-azure` do not get this gate.** Both run the
-> exporter as a **host-side** sidecar, because the enclave has no route to
-> a collector, and neither passes the SIEM environment across the TEE
-> boundary: the nitro `Dockerfile` never `COPY`s `siem.env.public` into
-> the EIF and no SIEM keys reach the measured `app.env`, while the Gramine
-> manifest sets `insecure__use_host_env = false` and lists no SIEM
-> variables in `[loader.env]`. `TEE_CRAFTER_SIEM_ENABLED` is therefore
-> unset inside the TEE, `siem_health.is_fail_closed` returns `False`,
-> and `fail_closed_wrap` — which *is* wired into
-> `nitro/app_vsock.template.py` and `sgx/app_gramine.template.py` — passes
-> every request straight through. The enclave could not read the host's
-> `/run/tee-crafter-<platform>/siem.health` even if the flag were set.
+> **`nitro-aws` reached this gate in 2026-08; `sgx-azure` never will.**
+> Nitro originally ran the exporter as a host-side sidecar, which could not
+> work: the enclave has no route to a collector, the nitro `Dockerfile`
+> never `COPY`d `siem.env.public` into the EIF, and no SIEM keys reached
+> the measured `app.env`, so `TEE_CRAFTER_SIEM_ENABLED` was unset inside
+> the TEE, `siem_health.is_fail_closed` returned `False`, and
+> `fail_closed_wrap` passed every request straight through. The exporter
+> now runs **inside** the enclave
+> (`templates/nitro/app_vsock.template.py::start_in_enclave_siem_export`,
+> line 606): the EIF
+> carries `siem_export.py` and a measured `siem.env.public`, the exporter
+> writes its health file to the enclave's own tmpfs — the namespace
+> `siem_health` reads — and delivers over TLS it terminates itself through
+> a dedicated vsock tunnel. So a blackout is now something the enclave can
+> detect and refuse on, which is what "preventive" means here.
 >
-> On those two, treat continuous-attestation export as a **detective**
-> control (the SOC sees the stream stop) rather than a **preventive** one
-> (the workload stops serving). Do not carry the logs-or-no-service claim
-> above into a control narrative for a Nitro or SGX deployment. The split
-> is enforced in code as
+> `sgx-azure` stays outside the gate, and cannot leave by the same route:
+> it is **batch-only**, so there is no request path for a request gate to
+> guard. Its preventive control is `batch._withhold_output_if_unaudited`
+> — the output bundle is withheld and the deploy exits non-zero — while
+> request-time export remains **detective** (the SOC sees the stream
+> stop). Do not carry the logs-or-no-service claim above into a
+> request-level control narrative for an SGX deployment.
+>
+> The split is enforced in code as
 > `siem_sidecar.PREVENTIVE_GATE_PLATFORMS` / `DETECTIVE_ONLY_GATE_PLATFORMS`
 > rather than left to this paragraph, because per-platform prose in this
-> project has been wrong six times.
+> project has been wrong six times — including this paragraph, which went
+> on claiming Nitro was detective-only after the code had already moved.
 
 Knob: set `"fail_open": true` in `siem.json` (or
 `TEE_CRAFTER_SIEM_FAIL_OPEN=1`) to revert to log-and-keep-serving

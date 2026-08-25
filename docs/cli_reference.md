@@ -516,14 +516,23 @@ clear to `/var/lib/tee_crafter/input` before bind-mounting it read-only at
 `/input` (`cli/commands/deploy/batch.py`, lines 531–560). The transport is
 encrypted; the copy sitting on the host disk is not.
 
-If the input is sensitive, seal it yourself with the command above and point
-the in-TEE batch runner at the bundle via `BATCH_SEALED_INPUT`
-(`templates/common/batch_runner.py::_maybe_unseal_input`, lines 211–239).
-Nothing in the deploy flow sets that variable or writes `seal_pub.pem` for you
-today, so both halves are manual: `BATCH_SEALED_INPUT` is read in exactly one
-place (`batch_runner.py:217`) and written in none, and `seal_pub.pem` appears
-in `apps/cli/src` only as help text on `seal-input --target-pub`
-(`cli/commands/seal_input.py:22`).
+> **`seal-input` currently has no in-TEE consumer. Do not rely on it to get
+> confidential input into a batch job.** Earlier revisions of this section said
+> the sealed bundle was unsealed by
+> `templates/common/batch_runner.py::_maybe_unseal_input` and selected with a
+> `BATCH_SEALED_INPUT` environment variable. Neither exists in this tree:
+> `batch_runner.py` is not present, and `grep -r BATCH_SEALED_INPUT apps/`
+> returns nothing. `seal_pub.pem` likewise appears in `apps/cli/src` only as
+> help text on `seal-input --target-pub` (`cli/commands/seal_input.py:22`) —
+> nothing in the deploy flow writes one, so there is no enclave public key to
+> seal against either.
+>
+> What the command does is real and self-contained: `core/sealing/seal.py`
+> produces an AES-256-GCM bundle and a manifest wrapped to the RSA public key
+> you pass, with `--build-id` and any `--aad` pairs bound by the GCM tag, and
+> `core/sealing/unseal.py` reverses it offline if you hold the private key.
+> Treat it as a sealing primitive waiting on the runner half, not as a
+> completed feature.
 
 
 ## Data residency / region pinning

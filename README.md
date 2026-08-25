@@ -174,14 +174,18 @@ are the short version.
 
 | Flag | What it does |
 |------|--------------|
-| `--secrets-env <path>` | Delivers an `.env` to the workload over the attested channel at `/run/tee_crafter/app.env` — tmpfs only, never on disk or in the image. Release is bound to the launch measurement and the container digest |
-| `--byok <provider> --byok-config <json>` | Releases a customer-managed key only to an attested TEE running the expected container digest. Providers: `aws-kms`, `gcp-kms`, `azure-skr`, `external-hsm`. See [docs/byok.md](docs/byok.md) |
+| `--secrets-env <path>` | Delivers an `.env` to the workload at `/run/tee_crafter/app.env`. **Paired with `--byok`** it is envelope-sealed at build time and the cleartext never touches the build host, the image or Terraform; **on its own** it is baked into the measured image, which is fine for config but not for secrets. See [docs/cli_reference.md](docs/cli_reference.md#application-secrets--config---secrets-env) |
+| `--byok <provider> --byok-config <json>` | Releases a customer-managed key that is unwrapped inside the TEE. **Release is not attestation-gated by default** — every provider × platform pair starts `iam-scoped`, where the key custodian checks identity rather than a hardware measurement. [docs/byok.md](docs/byok.md#per-provider-gating) names the combinations that upgrade to `kms-enforced` and the policy conditions each needs. Providers: `aws-kms`, `gcp-kms`, `azure-skr`, `external-hsm` |
 | `--siem <provider> --siem-config <json>` | Streams continuous-attestation events to `syslog-cef`, `splunk-hec` or `datadog`. See [docs/siem.md](docs/siem.md) |
 
-The SIEM gate is **preventive on the eight CVM platforms**: if the channel goes
-dark the TEE refuses requests and the deploy exits non-zero. On `nitro-aws` and
-`sgx-azure` the exporter runs host-side, so export there is a **detective**
-control only ([docs/security.md](docs/security.md) §17.6).
+The SIEM gate is **preventive on the nine platforms that serve requests** — the
+eight CVMs and, since 2026-08, `nitro-aws`, whose exporter now runs inside the
+enclave: if the channel goes dark the TEE refuses requests and the deploy exits
+non-zero. `sgx-azure` is batch-only, so it has no request path to guard; there
+the preventive control is the withheld output bundle instead, and request-time
+export is **detective** only. The authoritative split is
+`siem_sidecar.PREVENTIVE_GATE_PLATFORMS` / `DETECTIVE_ONLY_GATE_PLATFORMS`
+([docs/siem.md](docs/siem.md#which-control-you-actually-get-per-platform-and-per-run-mode)).
 
 A full production deploy with all three:
 
