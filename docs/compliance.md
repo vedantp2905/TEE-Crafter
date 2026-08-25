@@ -100,8 +100,18 @@ same build.
 |-----------|---------|----------|
 | GLBA Safeguards Rule | 16 CFR 314 | 8 |
 
-**Total: 14 frameworks, 110 controls**, derived by enumerating
-`build_default_registry.all`. Each framework module under
+**Total: 14 frameworks, 110 controls**, confirmed against this tree with:
+
+```bash
+python3 -c "
+import sys; sys.path.insert(0, 'apps/cli/src')
+from tee_crafter.core.compliance.registry import build_default_registry
+fw = build_default_registry().all()
+print(len(fw), 'frameworks,', sum(len(f.controls) for f in fw), 'controls')
+"
+```
+
+Each framework module under
 `apps/cli/src/tee_crafter/core/compliance/frameworks/` is the authoritative
 control list.
 

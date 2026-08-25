@@ -61,14 +61,19 @@ defend against. Where the row above says `iam-scoped`, that check is
 Do not present it to an auditor as an enforcing control.
 
 The rows above are a transcription of `_TABLE` in `core/keys/gating.py`
-(15 `(provider, platform)` entries, collapsed here by shared verdict). Dump the
+(15 `(provider, platform)` entries, collapsed here by shared verdict) — with one
+exception worth knowing before you diff them. **`azure-skr` is a CLI-level
+choice, not a `KeyProvider`.** The enum has five members (`aws_kms`, `azure_kv`,
+`gcp_kms`, `external_hsm`, `local_file`), so `--byok azure-skr` resolves to the
+`azure_kv` rows for gating purposes; its own rows above describe CLI behaviour
+and will not appear in the dump below. Dump the
 table and diff it against this section if providers or platforms are added:
 
 ```bash
 python3 -c "
 import sys; sys.path.insert(0, 'apps/cli/src')
 from tee_crafter.core.keys.gating import _TABLE
-for (prov, plat), row in sorted(_TABLE.items, key=lambda kv: (str(kv[0][0]), str(kv[0][1]))):
+for (prov, plat), row in sorted(_TABLE.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]))):
     up = row.upgraded.gating.value if row.upgraded else '-'
     print(f'{prov.value:14} {plat or \"(any)\":14} {row.gating.value:12} by={row.enforced_by:18} upgrade_when={row.upgrade_when} -> {up}')
 "

@@ -34,9 +34,10 @@ exporters live under
 Exporters **fail-closed by default**: the `SiemConfig` dataclass
 defaults `fail_open` to `False`
 ([`apps/cli/src/tee_crafter/cli/commands/deploy/siem_mode.py`](../apps/cli/src/tee_crafter/cli/commands/deploy/siem_mode.py)),
-so on the eight CVM platforms the main app refuses every request whenever the
-sidecar can't prove freshness (no health file inside the grace window, last
-export older than the lag threshold, or the SIEM endpoint rejecting events).
+so on the nine platforms that serve requests — the eight CVMs and `nitro-aws` —
+the main app refuses every request whenever the exporter can't prove freshness
+(no health file inside the grace window, last export older than the lag
+threshold, or the SIEM endpoint rejecting events).
 
 ### Which control you actually get, per platform and per run mode
 
@@ -49,7 +50,7 @@ one.
 |---|---|---|---|
 | `--persistent` | the 8 CVM platforms | **preventive** | exporter runs in the VM; app loads `siem.env.public` via the unit's `EnvironmentFile=`, so it reads the same `siem.health` |
 | `--persistent` | `nitro-aws` | **preventive** (since 2026-08) | exporter runs *inside the enclave* — see below |
-| `--batch` | all 10 | **preventive**, but on the output | no delivered audit trail → `output.tar.gz` is withheld and the deploy exits non-zero |
+| `--batch` | the 9 batch-capable platforms (everything except `nitro-aws`) | **preventive**, but on the output | no delivered audit trail → `output.tar.gz` is withheld and the deploy exits non-zero |
 
 **`nitro-aws` is preventive, and that depends on where the exporter runs.** A
 host-side sidecar cannot make this gate work: it would write
@@ -111,7 +112,8 @@ behaviour matrix.
 > per-platform.** Now that these exporters report honestly, the fail-closed
 > default does what it always claimed **on the eight CVM platforms**
 > (`snp-aws`, `snp-azure`, `snp-gcp`, `tdx-azure`, `tdx-gcp`, `gpu-cc-aws`,
-> `gpu-cc-azure`, `gpu-cc-gcp`): a workload whose collector is unreachable or
+> `gpu-cc-azure`, `gpu-cc-gcp`) — and, since the exporter moved into the
+> enclave in 2026-08, on `nitro-aws` too: a workload whose collector is unreachable or
 > whose HEC token is wrong **will refuse every request** with
 > `{"error":"siem_blackout"}`. That is the intended posture for PHI, and it is a
 > behaviour change for any such deployment that has been quietly failing to

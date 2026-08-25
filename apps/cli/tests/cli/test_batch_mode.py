@@ -4,8 +4,6 @@ These tests deliberately avoid any cloud SDKs / SSH transports — those are
 covered by the existing integration suites.  Here we only exercise the parts
 of batch mode that can be run end-to-end in a temp directory:
 
-* :func:`batch_runner.snapshot` / :func:`batch_runner.changed_since` produce
-  the right diff when files are added, modified, and untouched.
 * :func:`batch._extract_bundle` safely unpacks a tarball produced by
   ``tee_crafter_capture_container.sh``-style layouts.
 * The unified ``deploy`` CLI guards reject ``--batch`` + ``--persistent``

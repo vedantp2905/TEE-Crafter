@@ -20,12 +20,20 @@ at build time, never skipped.
 |---|---|---|---|
 | `intel-sgx-dcap-root.pem` | Intel SGX Root CA — anchors DCAP quotes and all PCS collateral on `sgx-azure`, `tdx-azure`, `tdx-gcp`, `gpu-cc-gcp` | 2049-12-31 | Low |
 | `nitro-root.pem` | `aws.nitro-enclaves` root — anchors Nitro attestation documents | 2049-10-28 | Low |
-| `amd-ark-milan.pem` | AMD ARK-Milan + SEV-VLEK-Milan — anchors SEV-SNP on Milan | 2045-10-22 | Low |
-| `amd-ark-genoa.pem` | AMD ARK-Genoa + SEV-Genoa — anchors SEV-SNP on Genoa | 2047-01-26 | Low |
+| `amd-ark-milan.pem` | AMD ARK-Milan + SEV-VLEK-Milan (the **VLEK**-signing intermediate, which is what AWS returns) — anchors SEV-SNP on Milan | 2045-10-22 | Low |
+| `amd-ask-milan.pem` | AMD ARK-Milan + SEV-Milan (the **VCEK**-signing ASK) — needed wherever a Milan host returns a VCEK rather than a VLEK, as GCP does. Loaded by `platforms._load_amd_ask_ca` | 2045-10-22 | Low |
+| `amd-ark-genoa.pem` | AMD ARK-Genoa + SEV-Genoa — anchors SEV-SNP on Genoa. Already carries the ASK, which is why only Milan needs a second file | 2047-01-26 | Low |
 | `nvidia-nras-intermediate.pem` | NVIDIA Attestation Service GPU Intermediate 004 — anchors the NRAS EAT token on all GPU-CC platforms | **2029-12-08** | **High — see below** |
 
-Verified against the files in this tree on 2026-08-20 with
-`.github/scripts/check_pinned_anchors.py`.
+The three AMD files are **bundles of two certificates each**, and the *Expires*
+column gives the earliest expiry in the bundle — which is the date that matters,
+since the chain fails when any link lapses. A quick `openssl x509 -noout
+-enddate` reads only the *first* certificate in a bundle and will disagree with
+this table on the AMD rows; `openssl storeutl -noout -certs <file>` shows both.
+
+Verified against the files in this tree on 2026-08-25 with
+`.github/scripts/check_pinned_anchors.py`, which enumerates every certificate in
+every bundle.
 
 ## Why the NVIDIA pin is the one to watch
 

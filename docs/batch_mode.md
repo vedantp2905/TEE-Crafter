@@ -68,7 +68,7 @@ The bundle size cap is **internalised** at 2 GiB. See
 | Cap-drop / no-new-privileges / seccomp | enforced | enforced |
 | AppArmor profile | `tee-crafter-container` (strict, path-allowlisted) | `tee-crafter-batch-container` (broad paths — see below) |
 | Host sees plaintext input | no | **yes** — see below |
-| Runs inside the TEE on ``nitro-aws`` | yes (enclave) | **no** — runs on the parent EC2 instance |
+| Available on ``nitro-aws`` | yes (enclave) | **no** — rejected in pre-flight; batch needs a CVM platform |
 
 ### Why batch mode uses a looser AppArmor profile
 
@@ -97,14 +97,15 @@ uploads it over the deploy channel, and the host extracts it in the clear to
 (``cli/commands/deploy/batch.py``, lines 531–560). The transport is encrypted;
 the copy on the host's disk is not.
 
-On ``nitro-aws`` this is at its worst: container batch runs the user image on
-the **parent EC2 instance**, not in the enclave, because ``docker diff`` capture
-is not available inside a Nitro Enclave (``batch_dispatch.py``, lines 298–309).
-That instance is an ordinary VM with unencrypted memory.
+``nitro-aws`` does not appear here, because container batch is rejected on it
+outright: a Nitro Enclave boots a signed EIF rather than an operator-supplied
+OCI image, so it is absent from ``resources.CONTAINER_PLATFORMS`` and
+``--batch --tee-platform nitro-aws`` fails in pre-flight before Terraform runs
+(``cli/preflight.py::_check_container_batch_supported``).
 
-If the input is sensitive, wrap it with ``tee-crafter seal-input`` and point the
-in-TEE runner at the bundle via ``BATCH_SEALED_INPUT``. Both halves are manual
-today — nothing in the deploy flow does it for you.
+If the input is sensitive, wrap it with ``tee-crafter seal-input``. Be aware
+that this currently produces a bundle with **no in-TEE consumer** — see the
+warning in [cli_reference.md](cli_reference.md#sealed-input-bundles).
 
 ### Batch output is captured by ``docker diff``
 
