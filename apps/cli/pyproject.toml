@@ -20,7 +20,7 @@ dependencies = [
     "google-cloud-kms==3.16.0",
     "cbor2==5.9.0",
     "cryptography==50.0.0",
-    "PyJWT[crypto]==2.13.0",
+    "PyJWT[crypto]==2.15.0",
     "requests==2.33.0",
 ]
 
